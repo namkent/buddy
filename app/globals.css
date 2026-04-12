@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Override Tailwind v4 preflight: prevents html { overflow-y: scroll } from creating
+   an outer scrollbar on the main chat layout which uses h-dvh/overflow-hidden containers */
+html,
+body {
+  overflow: hidden;
+  height: 100%;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

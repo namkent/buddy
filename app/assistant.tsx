@@ -167,16 +167,16 @@ export const Assistant = () => {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SidebarProvider>
-        <div className="flex h-dvh w-full pr-0.5">
+        <div className="flex h-dvh w-full overflow-hidden">
           <ThreadListSidebar/>
-          <SidebarInset>
+          <SidebarInset className="overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2 px-4">
               <SidebarTrigger/>
               <div className="ml-auto">
                 <ThemeToggle/>
               </div>
             </header>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden min-h-0">
               <Thread/>
             </div>
           </SidebarInset>
