@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
+import { AuthProvider } from "@/components/assistant-ui/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -23,8 +23,8 @@ const GoogleSansCode = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "MES Buddy",
-  description: "MES Buddy Chat Assistant",
+  title: "MES Assistant",
+  description: "MES Chat Assistant",
 };
 
 export default function RootLayout({
@@ -37,7 +37,9 @@ export default function RootLayout({
       <body
         className={`${GoogleSans.variable} ${GoogleSansFlex.variable} ${GoogleSansCode.variable} antialiased`}
       >
-        <TooltipProvider>{children}</TooltipProvider>
+        <AuthProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </AuthProvider>
       </body>
     </html>
   );

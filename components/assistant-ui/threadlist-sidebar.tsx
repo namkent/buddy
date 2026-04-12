@@ -1,6 +1,5 @@
 import * as React from "react";
-import { MessagesSquare } from "lucide-react";
-import { GitHubIcon } from "@/components/icons/github";
+import {MessagesSquare} from "lucide-react";
 import Link from "next/link";
 import {
   Sidebar,
@@ -12,11 +11,12 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { ThreadList } from "@/components/assistant-ui/thread-list";
+import {ThreadList} from "@/components/assistant-ui/thread-list";
+import {UserProvider} from "@/components/assistant-ui/user-provider";
 
 export function ThreadListSidebar({
-  ...props
-}: React.ComponentProps<typeof Sidebar>) {
+                                    ...props
+                                  }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar {...props}>
       <SidebarHeader className="aui-sidebar-header mb-2 border-b">
@@ -29,8 +29,9 @@ export function ThreadListSidebar({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <div className="aui-sidebar-header-icon-wrapper flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <MessagesSquare className="aui-sidebar-header-icon size-4" />
+                  <div
+                    className="aui-sidebar-header-icon-wrapper flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                    <MessagesSquare className="aui-sidebar-header-icon size-4"/>
                   </div>
                   <div className="aui-sidebar-header-heading mr-6 flex flex-col gap-0.5 leading-none">
                     <span className="aui-sidebar-header-title font-semibold text-xl">
@@ -44,29 +45,13 @@ export function ThreadListSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent className="aui-sidebar-content px-2">
-        <ThreadList />
+        <ThreadList/>
       </SidebarContent>
-      <SidebarRail />
+      <SidebarRail/>
       <SidebarFooter className="aui-sidebar-footer border-t">
         <SidebarMenu>
           <SidebarMenuItem>
-            {/* <SidebarMenuButton size="lg" asChild>
-              <Link
-                href="https://github.com/assistant-ui/assistant-ui"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <div className="aui-sidebar-footer-icon-wrapper flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <GitHubIcon className="aui-sidebar-footer-icon size-4" />
-                </div>
-                <div className="aui-sidebar-footer-heading flex flex-col gap-0.5 leading-none">
-                  <span className="aui-sidebar-footer-title font-semibold">
-                    GitHub
-                  </span>
-                  <span>View Source</span>
-                </div>
-              </Link>
-            </SidebarMenuButton> */}
+            <UserProvider />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
