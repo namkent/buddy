@@ -81,7 +81,11 @@ export const dbConnection = {
         let textContent = "";
         if (Array.isArray(message.content)) {
           textContent = message.content
-            .map((p: any) => (p.type === "text" ? p.text : ""))
+            .map((p: any) => {
+              if (p.type === "text") return p.text;
+              if (p.type === "reasoning") return `<think>\n${p.text}\n</think>\n`;
+              return "";
+            })
             .join("");
         } else {
           textContent = String(message.content);
