@@ -3,6 +3,7 @@ import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { JSONSchema7, streamText } from "ai";
+import { dbConnection } from "@/lib/db";
 
 const openai = createOpenAI({
   apiKey: process.env.GROQ_KEY,
@@ -10,32 +11,106 @@ const openai = createOpenAI({
 });
 
 export async function POST(req: Request) {
-  const { messages, system, tools }: {
-    messages: any[];
+  const { message, threadId, system, tools }: {
+    message: any;
+    threadId?: string;
     system?: string;
     tools?: Record<string, { description?: string; parameters: JSONSchema7 }>;
   } = await req.json();
 
-  if (!messages) {
-    return new Response("Missing messages", { status: 400 });
+  if (!message) {
+    return new Response("Missing message", { status: 400 });
   }
 
   const session = await getServerSession(authOptions);
-  if (!session) return new Response("Unauthorized", { status: 401 });
-  const { userId, userName, email, avatar } = session.user as any;
 
-  const apiMessages = messages.map((m: any) => ({
-    role: m.role,
-    content: Array.isArray(m.content)
-      ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
-      : m.content
-  }));
+  // Helper: trả về message lỗi dưới dạng stream để chat UI hiển thị được
+  const errorStream = (msg: string) => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(msg));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  };
+
+  if (!session) {
+    return errorStream("⚠️ Bạn chưa đăng nhập. Vui lòng đăng nhập để sử dụng trợ lý AI.");
+  }
+
+  const { userId, userName, email, avatar } = session.user as any;
+  const role = (session.user as any).role;
+
+  if (role === "guest") {
+    return errorStream("🔒 Tài khoản của bạn đang ở cấp độ **Guest** và chưa được cấp quyền sử dụng hệ thống.\n\nVui lòng liên hệ Quản trị viên để được phê duyệt quyền truy cập.");
+  }
+
+  let apiMessages: any[] = [];
+
+  // Reconstruct history from database
+  if (threadId) {
+    const dbMessages = await dbConnection.messages.findByThreadId(threadId);
+    apiMessages = dbMessages.map((m: any) => ({
+      role: m.role,
+      content: Array.isArray(m.content)
+        ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+        : String(m.content).replace(/<think>[\s\S]*?<\/think>/g, "")
+    }));
+
+    // Check if the current message is already in DB history 
+    // to avoid sending it twice to the AI prompt
+    const lastDbMsg = dbMessages[dbMessages.length - 1];
+    if (lastDbMsg?.id !== message.id) {
+      apiMessages.push({
+        role: message.role,
+        content: Array.isArray(message.content)
+          ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+          : message.content
+      });
+    }
+  } else {
+    // Failsafe mostly
+    apiMessages.push({
+      role: message.role,
+      content: Array.isArray(message.content)
+        ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+        : message.content
+    });
+  }
+
+  // Lấy content sạch từ tin nhắn cuối cùng của user để nạp Memory
+  const cleanMessageContent = Array.isArray(message.content)
+    ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+    : message.content;
+
+  // --- MEM0 MEMORY INTEGRATION ---
+  let memoryContextStr = "";
+  if (process.env.ENABLE_MEM0 === "true") {
+    try {
+      const { memory } = await import("@/lib/memory");
+      const ctx = await memory.search(cleanMessageContent, { userId });
+      console.log(`memory [${userId}] : ${ctx}`);
+      if (ctx) memoryContextStr = ctx;
+
+      memory.add(cleanMessageContent, { userId }).then(() => {
+        console.log(`memory add [${userId}] : OK`);
+      }).catch((e: any) => {
+        console.error(`memory add [${userId}] FAIL:`, e?.message || e);
+      });
+    } catch (error) {
+      console.error("Mem0 Search Fail:", error);
+    }
+  }
 
   const result = streamText({
     model: openai.chat(process.env.GROQ_MODEL || "llama-3.3-70b-versatile"),
     messages: apiMessages,
     system:
-      `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). You act as a brilliant, empathetic, and proactive "AI Colleague" rather than a rigid machine.`,
+      `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). You act as a brilliant, empathetic, and proactive "AI Colleague" rather than a rigid machine.\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`,
     tools: {
       ...frontendTools(tools ?? {}),
     },

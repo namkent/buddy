@@ -6,7 +6,16 @@ const openai = createOpenAI({
   baseURL: process.env.GROQ_BASE_URL,
 });
 
+import { getServerSession } from "next-auth";
+import { authOptions } from "../../auth/[...nextauth]/route";
+
 export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  
+  const role = (session.user as any).role;
+  if (role === "guest") return new Response("Forbidden", { status: 403 });
+
   try {
     const { message } = await req.json();
 

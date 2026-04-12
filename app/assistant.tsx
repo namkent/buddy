@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import {useMemo} from "react";
 import {
   AssistantRuntimeProvider,
   useRemoteThreadListRuntime,
@@ -9,26 +9,32 @@ import {
   RuntimeAdapterProvider,
   type ThreadHistoryAdapter
 } from "@assistant-ui/react";
-import { Thread } from "@/components/assistant-ui/thread";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
-import { Separator } from "@/components/ui/separator";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
-
-import { 
-  myChatModelAdapter, 
-  myThreadListAdapter, 
-  createHistoryAdapter 
+import {Thread} from "@/components/assistant-ui/thread";
+import {SidebarInset, SidebarProvider, SidebarTrigger} from "@/components/ui/sidebar";
+import {ThreadListSidebar} from "@/components/assistant-ui/threadlist-sidebar";
+import {ThemeToggle} from "@/components/assistant-ui/theme-toggle";
+import {
+  createChatModelAdapter,
+  myThreadListAdapter,
+  createHistoryAdapter
 } from "@/components/assistant-ui/database-adapter";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 
 export const Assistant = () => {
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: () => {
-      return useLocalRuntime(myChatModelAdapter);
+      const aui = useAui();
+      const modelAdapter = useMemo(() => {
+        return createChatModelAdapter(() => {
+          const state = aui.threadListItem().getState();
+          return state.remoteId || state.externalId;
+        });
+      }, [aui]);
+      return useLocalRuntime(modelAdapter);
     },
     adapter: {
       ...myThreadListAdapter,
-      unstable_Provider: ({ children }) => {
+      unstable_Provider: ({children}) => {
         const aui = useAui();
 
         const history = useMemo<ThreadHistoryAdapter>(
@@ -36,15 +42,15 @@ export const Assistant = () => {
             async load() {
               const state = aui.threadListItem().getState();
               const remoteId = state.remoteId || state.externalId;
-              if (!remoteId) return { messages: [] };
+              if (!remoteId) return {messages: []};
 
               const res = await fetch(`/api/chat/messages?threadId=${remoteId}`);
               const messages = await res.json();
-              
+
               let lastId: string | null = null;
               const formattedMessages = messages.map((m: any) => {
                 const isAssistant = m.role === "assistant";
-                
+
                 let contentParts: any[] = [];
                 const fullText = String(m.content || "");
                 const thinkStart = fullText.indexOf("<think>");
@@ -52,21 +58,24 @@ export const Assistant = () => {
 
                 if (thinkStart !== -1) {
                   if (thinkStart > 0) {
-                     contentParts.push({ type: "text", text: fullText.substring(0, thinkStart) });
+                    contentParts.push({type: "text", text: fullText.substring(0, thinkStart)});
                   }
                   if (thinkEnd !== -1) {
-                     contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7, thinkEnd).trimStart() });
-                     const mainText = fullText.substring(thinkEnd + 8);
-                     if (mainText.length > 0) {
-                        contentParts.push({ type: "text", text: mainText });
-                     }
+                    contentParts.push({
+                      type: "reasoning",
+                      text: fullText.substring(thinkStart + 7, thinkEnd).trimStart()
+                    });
+                    const mainText = fullText.substring(thinkEnd + 8);
+                    if (mainText.length > 0) {
+                      contentParts.push({type: "text", text: mainText});
+                    }
                   } else {
-                     contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7).trimStart() });
+                    contentParts.push({type: "reasoning", text: fullText.substring(thinkStart + 7).trimStart()});
                   }
                 } else {
-                  contentParts.push({ type: "text", text: fullText });
+                  contentParts.push({type: "text", text: fullText});
                 }
-                
+
                 const item = {
                   parentId: lastId,
                   message: {
@@ -75,7 +84,7 @@ export const Assistant = () => {
                     content: contentParts,
                     createdAt: new Date(m.createdAt),
                     ...(isAssistant ? {
-                      status: { type: "complete" },
+                      status: {type: "complete"},
                       metadata: {
                         custom: {},
                         steps: [],
@@ -95,7 +104,7 @@ export const Assistant = () => {
                 return item;
               });
 
-              return { messages: formattedMessages };
+              return {messages: formattedMessages};
             },
 
             async append(message) {
@@ -112,7 +121,7 @@ export const Assistant = () => {
           [aui],
         );
 
-        const adapters = useMemo(() => ({ history }), [history]);
+        const adapters = useMemo(() => ({history}), [history]);
 
         return (
           <RuntimeAdapterProvider adapters={adapters}>
@@ -127,31 +136,22 @@ export const Assistant = () => {
     <AssistantRuntimeProvider runtime={runtime}>
       <SidebarProvider>
         <div className="flex h-dvh w-full pr-0.5">
-          <ThreadListSidebar />
+          <ThreadListSidebar/>
           <SidebarInset>
-            <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink
-                      href="http://sdvmes.samsungdisplay.net:9095"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      SDV MES PORTAL
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>Chat Assistant</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+            <header className="flex h-16 shrink-0 items-center gap-2 px-4">
+              <SidebarTrigger/>
+              <TooltipIconButton
+                variant="ghost"
+                size="icon"
+                tooltip="Share"
+                side="bottom"
+                className="ml-auto size-9"
+              >
+                <ThemeToggle/>
+              </TooltipIconButton>
             </header>
             <div className="flex-1 overflow-hidden">
-              <Thread />
+              <Thread/>
             </div>
           </SidebarInset>
         </div>

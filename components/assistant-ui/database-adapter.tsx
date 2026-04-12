@@ -7,12 +7,15 @@ import {
 } from "@assistant-ui/react";
 import { createAssistantStream } from "assistant-stream";
 
-export const myChatModelAdapter: ChatModelAdapter = {
+export const createChatModelAdapter = (getThreadId: () => string | undefined): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
+    const threadId = getThreadId();
+    const lastMessage = messages[messages.length - 1];
+
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ message: lastMessage, threadId }),
       signal: abortSignal,
     });
 
@@ -29,7 +32,7 @@ export const myChatModelAdapter: ChatModelAdapter = {
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        if (totalChunks > 0) {
+        if (fullText) {
           const totalStreamTime = Date.now() - startTime;
           const tokensPerSecond = (fullText.length / 4) / (totalStreamTime / 1000);
           yield {
@@ -95,8 +98,8 @@ export const myChatModelAdapter: ChatModelAdapter = {
         }
       };
     }
-  },
-};
+  }
+});
 
 export const myThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
@@ -119,6 +122,10 @@ export const myThreadListAdapter: RemoteThreadListAdapter = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: cleanId }),
     });
+    if (!res.ok) {
+      // Nếu API chặn tạo thread (chưa đăng nhập, guest), cứ trả về local ID để UI tiếp tục
+      return { remoteId: threadId, externalId: threadId };
+    }
     const thread = await res.json();
     return { remoteId: thread.id, externalId: thread.id };
   },
