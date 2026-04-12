@@ -2,7 +2,8 @@
 
 import { signIn, getProviders } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/assistant-ui/theme-toggle";
 
 interface Provider {
   id: string;
@@ -10,7 +11,6 @@ interface Provider {
   type: string;
 }
 
-// Icon cho Google
 function GoogleIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
@@ -22,10 +22,9 @@ function GoogleIcon() {
   );
 }
 
-// Icon cho OIDC / SSO
 function SsoIcon() {
   return (
-    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg className="w-5 h-5 text-current" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
       <circle cx="12" cy="9" r="2.5" />
     </svg>
@@ -35,21 +34,85 @@ function SsoIcon() {
 export default function SignInPage() {
   const [providers, setProviders] = useState<Record<string, Provider>>({});
   const searchParams = useSearchParams();
-  const error = searchParams.get("error");
-  const [credUser, setCredUser] = useState("");
-  const [credPass, setCredPass] = useState("");
+  const errorParam = searchParams.get("error");
+  
+  const [view, setView] = useState<"login" | "register" | "changepass">("login");
+  
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [oldPassword, setOldPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ type: "", text: "" });
 
   useEffect(() => {
     getProviders().then((p) => {
       if (p) setProviders(p as Record<string, Provider>);
     });
-  }, []);
+    if (errorParam) {
+      setMsg({ type: "error", text: errorParam === "OAuthAccountNotLinked" ? "Email đã được gắn với phương thức đăng nhập khác." : "Đăng nhập thất bại. Vui lòng thử lại." });
+    }
+  }, [errorParam]);
 
-  const handleCredentials = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await signIn("credentials", { username: credUser, password: credPass, callbackUrl: "/" });
+    setMsg({ type: "", text: "" });
+    const res = await signIn("credentials", { username: email, password, redirect: false });
+    if (res?.error) {
+       setMsg({ type: "error", text: "Email hoặc mật khẩu không chính xác." });
+       setLoading(false);
+    } else {
+       window.location.href = "/";
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg({ type: "", text: "" });
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await res.json();
+      if (data.error) {
+         setMsg({ type: "error", text: data.error });
+      } else {
+         setMsg({ type: "success", text: "Đăng ký thành công! Vui lòng đăng nhập." });
+         setView("login");
+         setPassword("");
+      }
+    } catch {
+       setMsg({ type: "error", text: "Có lỗi xảy ra, vui lòng thử lại." });
+    }
+    setLoading(false);
+  };
+
+  const handleChangePass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMsg({ type: "", text: "" });
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, oldPassword, newPassword: password })
+      });
+      const data = await res.json();
+      if (data.error) {
+         setMsg({ type: "error", text: data.error });
+      } else {
+         setMsg({ type: "success", text: "Đổi mật khẩu thành công! Bạn có thể đăng nhập ngay." });
+         setView("login");
+         setPassword("");
+         setOldPassword("");
+      }
+    } catch {
+       setMsg({ type: "error", text: "Có lỗi xảy ra" });
+    }
     setLoading(false);
   };
 
@@ -58,93 +121,160 @@ export default function SignInPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center relative overflow-hidden p-4">
+    <div className="min-h-screen bg-zinc-50 dark:bg-[#0a0a0f] flex items-center justify-center relative overflow-hidden p-4 transition-colors duration-500">
+      
+      {/* Theme Toggle ở góc */}
+      <div className="absolute top-6 right-6 z-50">
+        <ThemeToggle />
+      </div>
+
       {/* Ambient glow blobs */}
-      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-violet-600/20 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-blue-600/15 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-[40%] left-[50%] w-[300px] h-[300px] bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-violet-600/10 dark:bg-violet-600/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 dark:bg-blue-600/15 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Card */}
       <div className="relative z-10 w-full max-w-md">
+        
         {/* Logo / Brand */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/30 mb-4">
             <span className="text-2xl">🤖</span>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">MES Buddy</h1>
-          <p className="text-zinc-400 mt-1 text-sm">AI Assistant — Đăng nhập để tiếp tục</p>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">MES Buddy</h1>
+          <p className="text-zinc-500 dark:text-zinc-400 mt-1 text-sm">Hệ thống trợ lý nâng cao</p>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex bg-zinc-200/50 dark:bg-zinc-800/50 rounded-xl p-1 mb-6 backdrop-blur-sm shadow-inner">
+          <button 
+            onClick={() => { setView("login"); setMsg({ type:"", text:"" }); }}
+            className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${view === "login" ? "bg-white dark:bg-zinc-700 shadow text-violet-600 dark:text-white" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white"}`}
+          >Đăng Nhập</button>
+          <button 
+            onClick={() => { setView("register"); setMsg({ type:"", text:"" }); }}
+            className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${view === "register" ? "bg-white dark:bg-zinc-700 shadow text-violet-600 dark:text-white" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white"}`}
+          >Đăng Ký</button>
+          <button 
+            onClick={() => { setView("changepass"); setMsg({ type:"", text:"" }); }}
+            className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all ${view === "changepass" ? "bg-white dark:bg-zinc-700 shadow text-violet-600 dark:text-white" : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-white"}`}
+          >Đổi Pass</button>
         </div>
 
         {/* Glass Card */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl shadow-black/50 p-8">
+        <div className="rounded-2xl border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-white/5 backdrop-blur-xl shadow-2xl shadow-black/5 dark:shadow-black/50 p-8">
 
-          {/* Error */}
-          {error && (
-            <div className="mb-6 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
-              {error === "OAuthAccountNotLinked"
-                ? "Email đã được đăng ký với phương thức khác."
-                : "Đăng nhập thất bại. Vui lòng thử lại."}
+          {/* System Messages */}
+          {msg.text && (
+            <div className={`mb-6 rounded-lg border px-4 py-3 text-sm animate-in fade-in slide-in-from-top-2 ${
+              msg.type === "success" 
+              ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400" 
+              : "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400"
+            }`}>
+              {msg.text}
             </div>
           )}
 
-          {/* OAuth / OIDC button */}
-          {oauthProviders.length > 0 && (
+          {/* VIEW: LOGIN */}
+          {view === "login" && (
             <>
-              <div className="flex flex-col gap-3">
-                {oauthProviders.map((provider) => (
-                  <button
-                    key={provider.id}
-                    onClick={() => signIn(provider.id, { callbackUrl: "/" })}
-                    className="w-full flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/8 hover:bg-white/15 text-white py-3 px-5 font-medium transition-all duration-200 hover:shadow-lg hover:shadow-white/5 hover:scale-[1.01] active:scale-[0.99]"
-                  >
-                    {provider.id === "google" ? <GoogleIcon /> : <SsoIcon />}
-                    <span>Đăng nhập với {provider.name}</span>
-                  </button>
-                ))}
-              </div>
+              {oauthProviders.length > 0 && (
+                <>
+                  <div className="flex flex-col gap-3">
+                    {oauthProviders.map((provider) => (
+                      <button
+                        key={provider.id}
+                        onClick={() => signIn(provider.id, { callbackUrl: "/" })}
+                        className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-300 dark:border-white/10 bg-zinc-50 hover:bg-zinc-100 dark:bg-white/8 dark:hover:bg-white/15 text-zinc-700 dark:text-white py-3 px-5 font-medium transition-all duration-200 hover:shadow-md"
+                      >
+                        {provider.id === "google" ? <GoogleIcon /> : <SsoIcon />}
+                        <span>Đăng nhập với {provider.name}</span>
+                      </button>
+                    ))}
+                  </div>
 
-              <div className="my-6 flex items-center gap-3">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-xs text-zinc-500 uppercase tracking-wider">hoặc</span>
-                <div className="flex-1 h-px bg-white/10" />
-              </div>
+                  <div className="my-6 flex items-center gap-3">
+                    <div className="flex-1 h-px bg-zinc-300 dark:bg-white/10" />
+                    <span className="text-xs text-zinc-400 uppercase tracking-wider">hoặc email</span>
+                    <div className="flex-1 h-px bg-zinc-300 dark:bg-white/10" />
+                  </div>
+                </>
+              )}
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required
+                    className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  />
+                </div>
+                <div>
+                  <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                    className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                  />
+                </div>
+                <button type="submit" disabled={loading}
+                  className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white py-2.5 px-5 font-semibold text-sm transition-all shadow-lg shadow-violet-500/30 disabled:opacity-50"
+                >
+                  {loading ? "Đang xử lý..." : "Đăng nhập"}
+                </button>
+              </form>
             </>
           )}
 
-          {/* Credentials form (Admin) */}
-          <form onSubmit={handleCredentials} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wide">
-                Đăng nhập bằng tài khoản
-              </label>
-              <input
-                type="text"
-                placeholder="Username"
-                value={credUser}
-                onChange={(e) => setCredUser(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 text-white placeholder-zinc-600 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
-              />
-            </div>
-            <div>
-              <input
-                type="password"
-                placeholder="Password"
-                value={credPass}
-                onChange={(e) => setCredPass(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 text-white placeholder-zinc-600 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50 transition-all"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={loading || !credUser || !credPass}
-              className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white py-2.5 px-5 font-semibold text-sm transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-violet-500/30 hover:scale-[1.01] active:scale-[0.99]"
-            >
-              {loading ? "Đang đăng nhập..." : "Đăng nhập"}
-            </button>
-          </form>
+          {/* VIEW: REGISTER */}
+          {view === "register" && (
+            <form onSubmit={handleRegister} className="space-y-4 animate-in fade-in slide-in-from-right-4">
+              <div>
+                <input type="text" placeholder="Họ và tên" value={name} onChange={(e) => setName(e.target.value)} required
+                  className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+              </div>
+              <div>
+                <input type="email" placeholder="Email đăng nhập" value={email} onChange={(e) => setEmail(e.target.value)} required
+                  className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+              </div>
+              <div>
+                <input type="password" placeholder="Mật khẩu" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={5}
+                  className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+              </div>
+              <button type="submit" disabled={loading}
+                className="w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white py-2.5 px-5 font-semibold text-sm transition-all shadow-lg shadow-violet-500/30 disabled:opacity-50 mt-2"
+              >
+                {loading ? "Đang xử lý..." : "Đăng ký tài khoản"}
+              </button>
+            </form>
+          )}
+
+          {/* VIEW: CHANGE PASSWORD */}
+          {view === "changepass" && (
+            <form onSubmit={handleChangePass} className="space-y-4 animate-in fade-in slide-in-from-left-4">
+               <div>
+                <input type="email" placeholder="Email tài khoản" value={email} onChange={(e) => setEmail(e.target.value)} required
+                  className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+              </div>
+              <div>
+                <input type="password" placeholder="Mật khẩu hiện tại (Bỏ trống nếu tạo lần đầu bằng SSO)" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+              </div>
+              <div>
+                <input type="password" placeholder="Mật khẩu mới" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={5}
+                  className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                />
+              </div>
+              <button type="submit" disabled={loading}
+                className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-5 font-semibold text-sm transition-all shadow-lg shadow-indigo-500/30 disabled:opacity-50 mt-2"
+              >
+                {loading ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+              </button>
+            </form>
+          )}
+
         </div>
 
-        <p className="text-center text-xs text-zinc-600 mt-6">
+        <p className="text-center text-xs text-zinc-500 dark:text-zinc-600 mt-6">
           MES Buddy © {new Date().getFullYear()} — Powered by AI
         </p>
       </div>

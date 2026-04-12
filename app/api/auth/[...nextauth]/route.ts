@@ -2,6 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { dbConnection } from "@/lib/db";
+import bcrypt from "bcryptjs";
 
 // Provider OIDC nội bộ
 const oidcProvider = {
@@ -38,21 +39,30 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        username: { label: "Username", type: "text" },
+        username: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
         await dbConnection.initTables();
-        const user = await dbConnection.users.findById(credentials.username);
-        if (user && user.password_hash === credentials.password) {
-          return {
-            id: user.id,
-            name: user.user_name,
-            email: user.email,
-            image: user.avatar,
-            role: user.role
-          };
+        
+        // Credentials.username serves as Email in the UI
+        const email = credentials.username;
+        const password = credentials.password;
+
+        const dbUser = await dbConnection.users.findByEmail(email);
+        if (dbUser && dbUser.password_hash) {
+          const isMatch = await bcrypt.compare(password, dbUser.password_hash);
+          if (isMatch) {
+            return {
+              id: dbUser.id,
+              name: dbUser.user_name,
+              email: dbUser.email,
+              image: dbUser.avatar,
+              role: dbUser.role,
+              is_banned: dbUser.is_banned
+            };
+          }
         }
         return null;
       }
@@ -77,17 +87,20 @@ export const authOptions: NextAuthOptions = {
         token.email = dbUser.email;
         token.avatar = dbUser.avatar;
         token.role = dbUser.role || 'guest';
+        token.is_banned = dbUser.is_banned;
       } else if (user) {
         token.userId = user.id;
         token.userName = user.name;
         token.email = user.email;
         token.avatar = user.image;
         token.role = (user as any).role;
+        token.is_banned = (user as any).is_banned;
       } else if (token.userId) {
         // Reload role dynamically from DB on page refresh (F5)
         const dbUser = await dbConnection.users.findById(token.userId as string);
         if (dbUser) {
           token.role = dbUser.role || 'guest';
+          token.is_banned = dbUser.is_banned;
         }
       }
       return token;
@@ -99,6 +112,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).email = token.email;
         (session.user as any).avatar = token.avatar;
         (session.user as any).role = token.role;
+        (session.user as any).is_banned = token.is_banned;
       }
       return session;
     },

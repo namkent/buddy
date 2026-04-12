@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { AuthProvider } from "@/components/assistant-ui/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ui/theme-provider";
+import { HeartbeatProvider } from "@/components/assistant-ui/heartbeat-provider";
 import "./globals.css";
 
 const GoogleSans = localFont({
@@ -45,6 +46,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
+            <HeartbeatProvider />
             <TooltipProvider>{children}</TooltipProvider>
           </AuthProvider>
         </ThemeProvider>

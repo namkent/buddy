@@ -1,19 +1,19 @@
 "use client";
 
-import {useSession, signIn, signOut} from "next-auth/react";
-import {LogIn, LogOut} from "lucide-react";
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
+import { useSession, signIn, signOut } from "next-auth/react";
+import { LogIn, LogOut } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export function UserProvider() {
-  const {data: session, status} = useSession();
+  const { data: session, status } = useSession();
 
   if (status === "loading") {
     return (
       <div className="flex flex-row gap-2 pl-2 items-center opacity-50">
-        <div className="size-8 rounded-lg bg-muted animate-pulse"/>
+        <div className="size-8 rounded-lg bg-muted animate-pulse" />
         <div className="flex flex-col gap-1">
-          <div className="h-3 w-20 bg-muted animate-pulse"/>
-          <div className="h-2 w-12 bg-muted animate-pulse"/>
+          <div className="h-3 w-20 bg-muted animate-pulse" />
+          <div className="h-2 w-12 bg-muted animate-pulse" />
         </div>
       </div>
     );
@@ -25,7 +25,7 @@ export function UserProvider() {
         onClick={() => signIn()}
         className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md transition-colors"
       >
-        <LogIn className="size-4 mr-2"/>
+        <LogIn className="size-4 mr-2" />
         <span>Login</span>
       </button>
     );
@@ -43,7 +43,7 @@ export function UserProvider() {
             className="object-cover"
           />
           <AvatarFallback>
-            <span className="text-xs font-bold">
+            <span className="text-lg font-bold">
               {session.user?.name?.charAt(0).toUpperCase() || "U"}
             </span>
           </AvatarFallback>
@@ -54,7 +54,7 @@ export function UserProvider() {
         <span className="font-semibold text-sm truncate">
           {session.user?.name}
         </span>
-        <span className="text-[10px] text-muted-foreground truncate">
+        <span className="text-[12px] text-muted-foreground truncate">
           {session.user?.email}
         </span>
       </div>
@@ -64,7 +64,7 @@ export function UserProvider() {
         className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-destructive transition-colors"
         title="Logout"
       >
-        <LogOut className="size-3"/>
+        <LogOut className="size-3" />
       </button>
     </div>
   );

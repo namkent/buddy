@@ -42,11 +42,19 @@ export async function POST(req: Request) {
     return errorStream("⚠️ Bạn chưa đăng nhập. Vui lòng đăng nhập để sử dụng trợ lý AI.");
   }
 
-  const { userId, userName, email, avatar } = session.user as any;
-  const role = (session.user as any).role;
+  const { userId, userName, email, avatar, is_banned, role } = session.user as any;
+
+  if (is_banned) {
+    return errorStream("🚫 Tài khoản của bạn đã bị vô hiệu hóa bởi Quản trị viên do vi phạm điều khoản hệ thống.\n\nVui lòng hệ admin@mes.local để biết thêm chi tiết.");
+  }
 
   if (role === "guest") {
     return errorStream("🔒 Tài khoản của bạn đang ở cấp độ **Guest** và chưa được cấp quyền sử dụng hệ thống.\n\nVui lòng liên hệ Quản trị viên để được phê duyệt quyền truy cập.");
+  }
+
+  // Fire-and-forget: cập nhật last_active không làm chậm request
+  if (userId) {
+    dbConnection.users.updateLastActive(userId).catch(() => {});
   }
 
   let apiMessages: any[] = [];
