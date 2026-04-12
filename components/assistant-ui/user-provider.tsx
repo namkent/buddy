@@ -22,7 +22,7 @@ export function UserProvider() {
   if (!session) {
     return (
       <button
-        onClick={() => signIn("google")}
+        onClick={() => signIn()}
         className="flex w-full items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-sidebar-accent hover:text-sidebar-accent-foreground rounded-md transition-colors"
       >
         <LogIn className="size-4 mr-2"/>
@@ -35,8 +35,8 @@ export function UserProvider() {
   return (
     <div className="flex flex-row items-center gap-3 pl-2 py-2">
       <div
-        className="flex aspect-square size-10 items-center justify-center rounded-sm overflow-hidden border border-sidebar-border shadow-sm">
-        <Avatar className="h-full w-full rounded-none">
+        className="flex aspect-square size-10 items-center justify-center rounded-full overflow-hidden border border-sidebar-border shadow-sm">
+        <Avatar className="h-full w-full rounded-full">
           <AvatarImage
             src={session.user?.image ?? ""}
             alt={session.user?.name ?? "User"}

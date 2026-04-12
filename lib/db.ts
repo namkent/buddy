@@ -127,13 +127,8 @@ export const dbConnection = {
 
         let textContent = "";
         if (Array.isArray(message.content)) {
-          textContent = message.content
-            .map((p: any) => {
-              if (p.type === "text") return p.text;
-              if (p.type === "reasoning") return `<think>\n${p.text}\n</think>\n`;
-              return "";
-            })
-            .join("");
+          // Lưu nguyên array thành JSON để giữ lại attachments (image, file)
+          textContent = JSON.stringify(message.content);
         } else {
           textContent = String(message.content);
         }

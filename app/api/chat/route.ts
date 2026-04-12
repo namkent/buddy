@@ -54,12 +54,25 @@ export async function POST(req: Request) {
   // Reconstruct history from database
   if (threadId) {
     const dbMessages = await dbConnection.messages.findByThreadId(threadId);
-    apiMessages = dbMessages.map((m: any) => ({
-      role: m.role,
-      content: Array.isArray(m.content)
-        ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
-        : String(m.content).replace(/<think>[\s\S]*?<\/think>/g, "")
-    }));
+    apiMessages = dbMessages.map((m: any) => {
+      let parsedContent = m.content;
+      try {
+        if (typeof m.content === "string") parsedContent = JSON.parse(m.content);
+      } catch (e) {
+        parsedContent = m.content;
+      }
+      
+      return {
+        role: m.role,
+        content: Array.isArray(parsedContent)
+          ? parsedContent.map((c: any) => {
+              if (c.type === "text") return { type: "text", text: c.text };
+              if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+              return null;
+            }).filter(Boolean)
+          : String(m.content).replace(/<think>[\s\S]*?<\/think>/g, "")
+      };
+    });
 
     // Check if the current message is already in DB history 
     // to avoid sending it twice to the AI prompt
@@ -68,7 +81,11 @@ export async function POST(req: Request) {
       apiMessages.push({
         role: message.role,
         content: Array.isArray(message.content)
-          ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+          ? message.content.map((c: any) => {
+              if (c.type === "text") return { type: "text", text: c.text };
+              if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+              return null;
+            }).filter(Boolean)
           : message.content
       });
     }
@@ -77,7 +94,11 @@ export async function POST(req: Request) {
     apiMessages.push({
       role: message.role,
       content: Array.isArray(message.content)
-        ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+        ? message.content.map((c: any) => {
+            if (c.type === "text") return { type: "text", text: c.text };
+            if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+            return null;
+          }).filter(Boolean)
         : message.content
     });
   }
@@ -106,8 +127,17 @@ export async function POST(req: Request) {
     }
   }
 
+  // Scan whether any message has an image block to swap the model if needed
+  const hasImage = apiMessages.some(m => 
+    Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image')
+  );
+  
+  const selectedModel = hasImage 
+    ? "llama-3.2-90b-vision-preview" 
+    : (process.env.GROQ_MODEL || "llama-3.3-70b-versatile");
+
   const result = streamText({
-    model: openai.chat(process.env.GROQ_MODEL || "llama-3.3-70b-versatile"),
+    model: openai.chat(selectedModel),
     messages: apiMessages,
     system:
       `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). You act as a brilliant, empathetic, and proactive "AI Colleague" rather than a rigid machine.\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`,

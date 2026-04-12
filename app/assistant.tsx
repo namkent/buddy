@@ -7,7 +7,10 @@ import {
   useLocalRuntime,
   useAui,
   RuntimeAdapterProvider,
-  type ThreadHistoryAdapter
+  type ThreadHistoryAdapter,
+  CompositeAttachmentAdapter,
+  SimpleImageAttachmentAdapter,
+  SimpleTextAttachmentAdapter
 } from "@assistant-ui/react";
 import {Thread} from "@/components/assistant-ui/thread";
 import {SidebarInset, SidebarProvider, SidebarTrigger} from "@/components/ui/sidebar";
@@ -30,7 +33,17 @@ export const Assistant = () => {
           return state.remoteId || state.externalId;
         });
       }, [aui]);
-      return useLocalRuntime(modelAdapter);
+
+      const attachmentAdapter = useMemo(() => 
+        new CompositeAttachmentAdapter([
+          new SimpleImageAttachmentAdapter(),
+          new SimpleTextAttachmentAdapter()
+        ])
+      , []);
+
+      return useLocalRuntime(modelAdapter, { 
+        adapters: { attachments: attachmentAdapter } 
+      });
     },
     adapter: {
       ...myThreadListAdapter,
@@ -52,28 +65,47 @@ export const Assistant = () => {
                 const isAssistant = m.role === "assistant";
 
                 let contentParts: any[] = [];
-                const fullText = String(m.content || "");
-                const thinkStart = fullText.indexOf("<think>");
-                const thinkEnd = fullText.indexOf("</think>");
+                let fullText = String(m.content || "");
+                let isJsonArray = false;
 
-                if (thinkStart !== -1) {
-                  if (thinkStart > 0) {
-                    contentParts.push({type: "text", text: fullText.substring(0, thinkStart)});
-                  }
-                  if (thinkEnd !== -1) {
-                    contentParts.push({
-                      type: "reasoning",
-                      text: fullText.substring(thinkStart + 7, thinkEnd).trimStart()
+                try {
+                  const parsed = JSON.parse(fullText);
+                  if (Array.isArray(parsed)) {
+                    contentParts = parsed.map(c => {
+                      // Parse <think> tags if this is a text part
+                      if (c.type === "text" && c.text.includes("<think>")) {
+                         // We could split <think> here, but assistant-ui renders reasoning parts separately
+                         // Let's just keep it simple: if JSON, assume text is raw or clean.
+                      }
+                      return c;
                     });
-                    const mainText = fullText.substring(thinkEnd + 8);
-                    if (mainText.length > 0) {
-                      contentParts.push({type: "text", text: mainText});
+                    isJsonArray = true;
+                  }
+                } catch {}
+
+                if (!isJsonArray) {
+                  const thinkStart = fullText.indexOf("<think>");
+                  const thinkEnd = fullText.indexOf("</think>");
+
+                  if (thinkStart !== -1) {
+                    if (thinkStart > 0) {
+                      contentParts.push({type: "text", text: fullText.substring(0, thinkStart)});
+                    }
+                    if (thinkEnd !== -1) {
+                      contentParts.push({
+                        type: "reasoning",
+                        text: fullText.substring(thinkStart + 7, thinkEnd).trimStart()
+                      });
+                      const mainText = fullText.substring(thinkEnd + 8);
+                      if (mainText.length > 0) {
+                        contentParts.push({type: "text", text: mainText});
+                      }
+                    } else {
+                      contentParts.push({type: "reasoning", text: fullText.substring(thinkStart + 7).trimStart()});
                     }
                   } else {
-                    contentParts.push({type: "reasoning", text: fullText.substring(thinkStart + 7).trimStart()});
+                    contentParts.push({type: "text", text: fullText});
                   }
-                } else {
-                  contentParts.push({type: "text", text: fullText});
                 }
 
                 const item = {
@@ -140,15 +172,9 @@ export const Assistant = () => {
           <SidebarInset>
             <header className="flex h-16 shrink-0 items-center gap-2 px-4">
               <SidebarTrigger/>
-              <TooltipIconButton
-                variant="ghost"
-                size="icon"
-                tooltip="Share"
-                side="bottom"
-                className="ml-auto size-9"
-              >
+              <div className="ml-auto">
                 <ThemeToggle/>
-              </TooltipIconButton>
+              </div>
             </header>
             <div className="flex-1 overflow-hidden">
               <Thread/>

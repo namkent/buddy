@@ -53,7 +53,7 @@ export default function SignInPage() {
     setLoading(false);
   };
 
-  const oauthProvider = Object.values(providers).find(
+  const oauthProviders = Object.values(providers).filter(
     (p) => p.type === "oauth" || p.type === "oidc"
   );
 
@@ -88,15 +88,20 @@ export default function SignInPage() {
           )}
 
           {/* OAuth / OIDC button */}
-          {oauthProvider && (
+          {oauthProviders.length > 0 && (
             <>
-              <button
-                onClick={() => signIn(oauthProvider.id, { callbackUrl: "/" })}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/8 hover:bg-white/15 text-white py-3 px-5 font-medium transition-all duration-200 hover:shadow-lg hover:shadow-white/5 hover:scale-[1.01] active:scale-[0.99]"
-              >
-                {oauthProvider.id === "google" ? <GoogleIcon /> : <SsoIcon />}
-                <span>Đăng nhập với {oauthProvider.name}</span>
-              </button>
+              <div className="flex flex-col gap-3">
+                {oauthProviders.map((provider) => (
+                  <button
+                    key={provider.id}
+                    onClick={() => signIn(provider.id, { callbackUrl: "/" })}
+                    className="w-full flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/8 hover:bg-white/15 text-white py-3 px-5 font-medium transition-all duration-200 hover:shadow-lg hover:shadow-white/5 hover:scale-[1.01] active:scale-[0.99]"
+                  >
+                    {provider.id === "google" ? <GoogleIcon /> : <SsoIcon />}
+                    <span>Đăng nhập với {provider.name}</span>
+                  </button>
+                ))}
+              </div>
 
               <div className="my-6 flex items-center gap-3">
                 <div className="flex-1 h-px bg-white/10" />

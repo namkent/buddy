@@ -3,17 +3,10 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { dbConnection } from "@/lib/db";
 
-/**
- * AUTH_PROVIDER có thể set trong .env:
- *  - "google"  → dùng Google OIDC (mặc định)
- *  - "oidc"    → dùng OIDC nội bộ công ty (dùng biến OIDC_*)
- */
-const AUTH_PROVIDER = process.env.AUTH_PROVIDER || "google";
-
-// Provider OIDC nội bộ — dùng khi AUTH_PROVIDER=oidc
+// Provider OIDC nội bộ
 const oidcProvider = {
   id: "oidc",
-  name: process.env.OIDC_PROVIDER_NAME || "OIDC Login",
+  name: process.env.OIDC_PROVIDER_NAME || "Company SSO",
   type: "oauth" as const,
   wellKnown: process.env.OIDC_WELL_KNOWN,
   clientId: process.env.OIDC_CLIENT_ID,
@@ -31,18 +24,17 @@ const oidcProvider = {
   },
 };
 
-const oauthProvider = AUTH_PROVIDER === "oidc" ? oidcProvider : GoogleProvider({
-  clientId: process.env.GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-});
-
 // 1. Đưa cấu hình vào biến authOptions và export nó
 export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
   providers: [
-    oauthProvider,
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    oidcProvider,
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
