@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   ComposerAddAttachment,
   ComposerAttachments,
@@ -21,6 +24,7 @@ import {
   SuggestionPrimitive,
   ThreadPrimitive,
   useAuiState,
+  useAssistantRuntime
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -93,45 +97,54 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
+  const [title, setTitle] = useState("Xin chào!");
+  const [subtitle, setSubtitle] = useState("Tôi có thể giúp gì cho bạn không?");
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/chat/config")
+      .then(r => r.json())
+      .then(d => {
+        if (d.welcome_title) setTitle(d.welcome_title);
+        if (d.welcome_subtitle) setSubtitle(d.welcome_subtitle);
+        if (d.suggestions && Array.isArray(d.suggestions)) setSuggestions(d.suggestions);
+      })
+      .catch(console.error);
+  }, []);
+
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
-            Xin chào!
+            {title}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
-            Tôi có thể giúp gì cho bạn không?
+            {subtitle}
           </p>
         </div>
       </div>
-      <ThreadSuggestions />
+      <ThreadSuggestions suggestions={suggestions} />
     </div>
   );
 };
 
-const ThreadSuggestions: FC = () => {
+const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
+  const runtime = useAssistantRuntime();
+  if (!suggestions || suggestions.length === 0) return null;
   return (
     <div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
-      <ThreadPrimitive.Suggestions>
-        {() => <ThreadSuggestionItem />}
-      </ThreadPrimitive.Suggestions>
-    </div>
-  );
-};
-
-const ThreadSuggestionItem: FC = () => {
-  return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 @md:nth-[n+3]:block nth-[n+3]:hidden animate-in fill-mode-both duration-200">
-      <SuggestionPrimitive.Trigger send asChild>
-        <Button
-          variant="ghost"
-          className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-3xl border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
-        >
-          <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 font-medium" />
-          <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
-        </Button>
-      </SuggestionPrimitive.Trigger>
+      {suggestions.map((sug) => (
+        <div key={sug.id} className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 @md:nth-[n+3]:block nth-[n+3]:hidden animate-in fill-mode-both duration-200">
+          <Button
+            variant="ghost"
+            onClick={() => runtime.thread.append({ role: "user", content: [{ type: "text", text: sug.prompt }] })}
+            className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-3xl border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
+          >
+            <span className="aui-thread-welcome-suggestion-text-1 font-medium">{sug.title}</span>
+          </Button>
+        </div>
+      ))}
     </div>
   );
 };

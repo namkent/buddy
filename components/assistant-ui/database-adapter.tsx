@@ -12,6 +12,50 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
     const threadId = getThreadId();
     const lastMessage = messages[messages.length - 1];
 
+    const userMessages = messages.filter(m => m.role === "user");
+    if (userMessages.length > 1 && userMessages.length % 5 === 0 && threadId && !threadId.startsWith("__LOCALID_")) {
+      // Delay it by 500ms to ensure the main chat fetch starts first without NextJS queuing blocks
+      setTimeout(() => {
+        (async () => {
+          try {
+            const recentMessages = messages
+              .slice(-20)
+              .map(m => {
+                const content = Array.isArray(m.content) 
+                  ? m.content.map((c: any) => c.text || "").join("") 
+                  : typeof m.content === 'string' ? m.content : "";
+                return `${m.role}: ${content}`;
+              })
+              .join("\n");
+              
+            const titleRes = await fetch("/api/chat/title", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: recentMessages, isPeriodic: true })
+            });
+            
+            if (!titleRes.ok) return;
+            const titleData = await titleRes.json();
+            
+            if (titleData.title) {
+              const cleanTitle = titleData.title.trim().replace(/^["']|["']$/g, '');
+              await fetch("/api/chat/threads", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: threadId, data: { title: cleanTitle } }),
+              });
+              // Dispatch event to refresh thread list
+              window.dispatchEvent(new CustomEvent('meshbuddy-refresh-threads', {
+                detail: { threadId, title: cleanTitle }
+              }));
+            }
+          } catch (e) {
+            console.error("Auto rename failed", e);
+          }
+        })();
+      }, 500);
+    }
+
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

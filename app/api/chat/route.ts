@@ -144,14 +144,32 @@ export async function POST(req: Request) {
     ? "llama-3.2-90b-vision-preview" 
     : (process.env.GROQ_MODEL || "llama-3.3-70b-versatile");
 
+  // Lấy cấu hình hệ thống
+  const [dbSystemPrompt, rawEnableTranslate, rawEnableRag] = await Promise.all([
+    dbConnection.settings.get("SYSTEM_PROMPT"),
+    dbConnection.settings.get("ENABLE_TOOL_TRANSLATE"),
+    dbConnection.settings.get("ENABLE_TOOL_RAG_SEARCH")
+  ]);
+
+  const resolvedSystemPrompt = dbSystemPrompt || "Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống. Bạn mang phong cách như một đồng nghiệp thông minh, thân thiện.";
+
+  const activeTools = { ...frontendTools(tools ?? {}) };
+  
+  if (rawEnableTranslate === "false" || rawEnableTranslate === "0") {
+    // Nếu có tool dịch và đang bị tắt, xoá nó để LLM không gọi được
+    if (activeTools.translate) delete activeTools.translate;
+  }
+  if (rawEnableRag === "false" || rawEnableRag === "0") {
+    if (activeTools.rag_search) delete activeTools.rag_search;
+    if (activeTools.ragSearch) delete activeTools.ragSearch;
+  }
+
   const result = streamText({
     model: openai.chat(selectedModel),
     messages: apiMessages,
     system:
-      `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). You act as a brilliant, empathetic, and proactive "AI Colleague" rather than a rigid machine.\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`,
-    tools: {
-      ...frontendTools(tools ?? {}),
-    },
+      `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`,
+    tools: activeTools,
     providerOptions: {
       openai: {
         reasoningEffort: "none",

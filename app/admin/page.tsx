@@ -63,30 +63,30 @@ export default function AdminDashboardPage() {
   }, []);
 
   const statCards = [
-    { label: "Total Users",    value: stats.usersCount,    color: "violet", Icon: Users },
-    { label: "Online Now",     value: stats.onlineCount,   color: "emerald", Icon: Wifi },
-    { label: "Total Threads",  value: stats.threadsCount,  color: "blue",   Icon: MessagesSquare },
-    { label: "Total Messages", value: stats.messagesCount, color: "amber",  Icon: MessageCircle },
+    { label: "Total Users", value: stats.usersCount, color: "violet", Icon: Users },
+    { label: "Online Now", value: stats.onlineCount, color: "emerald", Icon: Wifi },
+    { label: "Total Threads", value: stats.threadsCount, color: "blue", Icon: MessagesSquare },
+    { label: "Total Messages", value: stats.messagesCount, color: "amber", Icon: MessageCircle },
   ];
 
   const colorMap: Record<string, string> = {
     violet: "from-violet-100 dark:from-violet-600/20 border-violet-200 dark:border-violet-500/30 text-violet-600 dark:text-violet-300 bg-violet-500/20 text-violet-400",
-    emerald:"from-emerald-100 dark:from-emerald-600/20 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 text-emerald-400",
-    blue:   "from-blue-100 dark:from-blue-600/20 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-300 bg-blue-500/20 text-blue-400",
-    amber:  "from-amber-100 dark:from-amber-600/20 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-300 bg-amber-500/20 text-amber-400",
+    emerald: "from-emerald-100 dark:from-emerald-600/20 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 text-emerald-400",
+    blue: "from-blue-100 dark:from-blue-600/20 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-300 bg-blue-500/20 text-blue-400",
+    amber: "from-amber-100 dark:from-amber-600/20 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-300 bg-amber-500/20 text-amber-400",
   };
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="max-w-6xl w-full mx-auto space-y-8 pb-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white mb-1">Overview</h1>
-        <p className="text-zinc-500 dark:text-zinc-400 text-base">Welcome to the MES Buddy administration panel.</p>
+        <p className="text-zinc-500 dark:text-zinc-400 text-base">Welcome to the MES Assistant administration panel.</p>
       </div>
 
       {/* Stat Cards */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-pulse">
-          {[1,2,3,4].map(i => <div key={i} className="h-28 rounded-2xl bg-zinc-200 dark:bg-white/5 border border-zinc-300 dark:border-white/10" />)}
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-28 rounded-2xl bg-zinc-200 dark:bg-white/5 border border-zinc-300 dark:border-white/10" />)}
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -133,7 +133,7 @@ export default function AdminDashboardPage() {
           </div>
           {loading ? (
             <div className="space-y-3 animate-pulse">
-              {[1,2,3,4,5].map(i => <div key={i} className="h-10 rounded-lg bg-zinc-200 dark:bg-white/5" />)}
+              {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 rounded-lg bg-zinc-200 dark:bg-white/5" />)}
             </div>
           ) : stats.topUsers.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-zinc-400 text-sm">Chưa có dữ liệu</div>

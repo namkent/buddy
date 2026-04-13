@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   if (role === "guest") return new Response("Forbidden", { status: 403 });
 
   try {
-    const { message } = await req.json();
+    const { message, isPeriodic } = await req.json();
 
     if (!message) {
       return new Response(JSON.stringify({ title: "New Chat" }), { 
@@ -25,9 +25,13 @@ export async function POST(req: Request) {
       });
     }
 
+    const promptText = isPeriodic 
+      ? `Dựa vào lịch sử đoạn chat gần đây sau đây, hãy đặt một tiêu đề thật ngắn gọn (tối đa 4-5 từ) tóm tắt nội dung chính của cuộc hội thoại. Chỉ trả về đúng đoạn text của tiêu đề, không cần bọc trong ngoặc kép hay giải thích gì thêm.\n\nLịch sử chat:\n"${message}"`
+      : `Dựa vào đoạn tin nhắn mở đầu sau đây, hãy đặt một tiêu đề thật ngắn gọn (tối đa 4-5 từ) cho cuộc hội thoại. Chỉ trả về đúng đoạn text của tiêu đề, không cần bọc trong ngoặc kép hay giải thích gì thêm.\n\nTin nhắn: "${message}"`;
+
     const { text } = await generateText({
       model: openai.chat(process.env.GROQ_MODEL || "llama-3.3-70b-versatile"),
-      prompt: `Dựa vào đoạn tin nhắn mở đầu sau đây, hãy đặt một tiêu đề thật ngắn gọn (tối đa 4-5 từ) cho cuộc hội thoại. Chỉ trả về đúng đoạn text của tiêu đề, không cần bọc trong ngoặc kép hay giải thích gì thêm.\n\nTin nhắn: "${message}"`,
+      prompt: promptText,
       providerOptions: {
         openai: {
           reasoningEffort: "none",

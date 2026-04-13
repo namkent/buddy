@@ -71,6 +71,33 @@ export const dbConnection = {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         user_id TEXT REFERENCES users(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS system_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        description TEXT,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS thread_suggestions (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        is_auto_generated BOOLEAN DEFAULT FALSE,
+        active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    
+    // Seed default settings if they don't exist
+    await pool.query(`
+      INSERT INTO system_settings (key, value, description) VALUES
+      ('WELCOME_TITLE', 'Xin chào!', 'Tiêu đề lời chào mừng ở đầu cuộc trò chuyện'),
+      ('WELCOME_SUBTITLE', 'Tôi có thể giúp gì cho bạn không?', 'Nội dung lời chào mừng ở đầu cuộc trò chuyện'),
+      ('SYSTEM_PROMPT', 'Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống.', 'Prompt hệ thống để định hướng phản hồi của LLM'),
+      ('ENABLE_TOOL_TRANSLATE', 'true', 'Bật tính năng dịch thuật'),
+      ('ENABLE_TOOL_RAG_SEARCH', 'true', 'Bật tính năng RAG Search')
+      ON CONFLICT (key) DO NOTHING;
     `);
     
     // Add columns dynamically if tables already existed without altering constraints fatally
@@ -236,5 +263,57 @@ export const dbConnection = {
         console.error("DB Message Error:", error);
       }
     },
+  },
+
+  settings: {
+    async getAll() {
+      const res = await pool.query('SELECT * FROM system_settings ORDER BY key ASC');
+      return res.rows;
+    },
+    async get(key: string) {
+      const res = await pool.query('SELECT value FROM system_settings WHERE key = $1', [key]);
+      return res.rows[0]?.value || null;
+    },
+    async set(key: string, value: string, description?: string) {
+      if (description !== undefined) {
+        await pool.query(
+          'INSERT INTO system_settings (key, value, description) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, description = EXCLUDED.description, updated_at = CURRENT_TIMESTAMP',
+          [key, value, description]
+        );
+      } else {
+        await pool.query(
+          'INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP',
+          [key, value]
+        );
+      }
+    }
+  },
+
+  suggestions: {
+    async getAll() {
+      const res = await pool.query('SELECT * FROM thread_suggestions ORDER BY created_at DESC');
+      return res.rows;
+    },
+    async getActiveRandom(limit: number = 4) {
+      const res = await pool.query('SELECT * FROM thread_suggestions WHERE active = TRUE ORDER BY RANDOM() LIMIT $1', [limit]);
+      return res.rows;
+    },
+    async create(data: { title: string, prompt: string, is_auto_generated?: boolean }) {
+      const res = await pool.query(
+        'INSERT INTO thread_suggestions (title, prompt, is_auto_generated) VALUES ($1, $2, $3) RETURNING *',
+        [data.title, data.prompt, data.is_auto_generated || false]
+      );
+      return res.rows[0];
+    },
+    async update(id: number, data: any) {
+      const fields = Object.keys(data);
+      if (fields.length === 0) return;
+      const values = Object.values(data);
+      const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
+      await pool.query(`UPDATE thread_suggestions SET ${setClause} WHERE id = $1`, [id, ...values]);
+    },
+    async delete(id: number) {
+      await pool.query('DELETE FROM thread_suggestions WHERE id = $1', [id]);
+    }
   }
 };
