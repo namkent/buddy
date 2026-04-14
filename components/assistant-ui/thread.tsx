@@ -165,25 +165,30 @@ const Composer: FC = () => {
     ];
     const langs = [
       { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
-      { id: "en", name: "English", emoji: "🇺🇸" },
       { id: "ko", name: "Korean", emoji: "🇰🇷" },
+      { id: "en", name: "English", emoji: "🇺🇸" },
       { id: "zh", name: "Chinese", emoji: "🇨🇳" },
-      { id: "ja", name: "Japanese", emoji: "🇯🇵" }
+      { id: "ja", name: "Japanese", emoji: "🇯🇵" },
+      { id: "fr", name: "French", emoji: "🇫🇷" },
+      { id: "de", name: "German", emoji: "🇩🇪" },
+      { id: "es", name: "Spanish", emoji: "🇪🇸" },
+      { id: "ru", name: "Russian", emoji: "🇷🇺" },
+      { id: "th", name: "Thai", emoji: "🇹🇭" }
     ];
     const actionsItems = [
-      { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
-      { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
+      { id: "summarize", type: "command", label: "Summarize", description: "Summarize the chat content" },
+      { id: "search", type: "command", label: "Search", description: "Search in knowledge base (RAG)" },
     ];
     const translateItems = [
       ...langs.map(l => ({
-        id: `translate_${l.id}`, type: "command", label: l.name, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji, langName: l.name
+        id: `translate_${l.id}`, type: "command", label: l.name, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
       }))
     ];
     const allSearchItems = [
-      { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
-      { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
+      { id: "summarize", type: "command", label: "Summarize", description: "Summarize the chat content" },
+      { id: "search", type: "command", label: "Search", description: "Search in knowledge base (RAG)" },
       ...langs.map(l => ({
-        id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji, langName: l.name
+        id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
       }))
     ];
 
