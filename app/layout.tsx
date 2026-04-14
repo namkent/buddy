@@ -4,6 +4,7 @@ import { AuthProvider } from "@/components/assistant-ui/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { HeartbeatProvider } from "@/components/assistant-ui/heartbeat-provider";
+import { Toaster } from "sonner";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
@@ -50,6 +51,7 @@ export default function RootLayout({
             <HeartbeatProvider />
             <TooltipProvider>{children}</TooltipProvider>
           </AuthProvider>
+          <Toaster richColors position="top-right" />
         </ThemeProvider>
       </body>
     </html>

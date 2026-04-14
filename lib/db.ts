@@ -96,7 +96,9 @@ export const dbConnection = {
       ('WELCOME_SUBTITLE', 'Tôi có thể giúp gì cho bạn không?', 'Nội dung lời chào mừng ở đầu cuộc trò chuyện'),
       ('SYSTEM_PROMPT', 'Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống.', 'Prompt hệ thống để định hướng phản hồi của LLM'),
       ('ENABLE_TOOL_TRANSLATE', 'true', 'Bật tính năng dịch thuật'),
-      ('ENABLE_TOOL_RAG_SEARCH', 'true', 'Bật tính năng RAG Search')
+      ('ENABLE_TOOL_RAG_SEARCH', 'true', 'Bật tính năng RAG Search'),
+      ('ENABLE_TOOL_SUMMARIZE', 'true', 'Bật tính năng Tóm tắt Chat'),
+      ('ENABLE_GUEST_ACCESS', 'false', 'Cho phép người dùng chưa phân quyền (Guest) được nhắn tin')
       ON CONFLICT (key) DO NOTHING;
     `);
     

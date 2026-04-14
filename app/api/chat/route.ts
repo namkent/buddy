@@ -49,7 +49,10 @@ export async function POST(req: Request) {
   }
 
   if (role === "guest") {
-    return errorStream("🔒 Tài khoản của bạn đang ở cấp độ **Guest** và chưa được cấp quyền sử dụng hệ thống.\n\nVui lòng liên hệ Quản trị viên để được phê duyệt quyền truy cập.");
+    const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
+    if (enableGuest !== "true") {
+      return errorStream("🔒 Tài khoản của bạn đang ở cấp độ **Guest** và chưa được cấp quyền sử dụng hệ thống.\n\nVui lòng liên hệ Quản trị viên để được phê duyệt quyền truy cập.");
+    }
   }
 
   // Fire-and-forget: cập nhật last_active không làm chậm request

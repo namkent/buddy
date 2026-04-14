@@ -158,11 +158,21 @@ const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
 const Composer: FC = () => {
   const runtime = useAssistantRuntime();
 
+  const [features, setFeatures] = useState({ summarize: true, search: true, translate: true });
+
+  useEffect(() => {
+    fetch("/api/chat/config")
+      .then(r => r.json())
+      .then(d => {
+        if (d.features) setFeatures(d.features);
+      })
+      .catch(console.error);
+  }, []);
+
   const slashAdapter = useMemo(() => {
-    const categoriesList = [
-      { id: "actions", label: "Actions" },
-      { id: "translate", label: "Translate" }
-    ];
+    const categoriesList: {id: string, label: string}[] = [];
+    if (features.search || features.summarize) categoriesList.push({ id: "actions", label: "Actions" });
+    if (features.translate) categoriesList.push({ id: "translate", label: "Translate" });
     const langs = [
       { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
       { id: "ko", name: "Korean", emoji: "🇰🇷" },
@@ -175,21 +185,23 @@ const Composer: FC = () => {
       { id: "ru", name: "Russian", emoji: "🇷🇺" },
       { id: "th", name: "Thai", emoji: "🇹🇭" }
     ];
-    const actionsItems = [
-      { id: "summarize", type: "command", label: "Summarize", description: "Summarize the chat content" },
-      { id: "search", type: "command", label: "Search", description: "Search in knowledge base (RAG)" },
-    ];
-    const translateItems = [
-      ...langs.map(l => ({
-        id: `translate_${l.id}`, type: "command", label: l.name, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
-      }))
-    ];
+    const actionsItems: any[] = [];
+    if (features.summarize) {
+      actionsItems.push({ id: "summarize", type: "command", label: "Summarize", description: "Summarize the chat content" });
+    }
+    if (features.search) {
+      actionsItems.push({ id: "search", type: "command", label: "Search", description: "Search in knowledge base (RAG)" });
+    }
+
+    const translateItems = features.translate ? langs.map(l => ({
+      id: `translate_${l.id}`, type: "command", label: l.name, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
+    })) : [];
+
     const allSearchItems = [
-      { id: "summarize", type: "command", label: "Summarize", description: "Summarize the chat content" },
-      { id: "search", type: "command", label: "Search", description: "Search in knowledge base (RAG)" },
-      ...langs.map(l => ({
+      ...actionsItems,
+      ...(features.translate ? langs.map(l => ({
         id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
-      }))
+      })) : [])
     ];
 
     return {
@@ -210,7 +222,7 @@ const Composer: FC = () => {
         );
       }
     };
-  }, []);
+  }, [features]);
 
   const handleSlashSelect = (item: any) => {
     // Xử lý lệnh thực tế

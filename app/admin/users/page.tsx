@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { Trash2, ShieldBan, ShieldCheck, Mail, ShieldAlert } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -120,16 +127,20 @@ export default function AdminUsersPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <select
-                      value={u.role_id}
-                      onChange={(e) => handleUpdateRole(u.id, parseInt(e.target.value))}
+                    <Select
+                      value={String(u.role_id)}
+                      onValueChange={(val) => handleUpdateRole(u.id, parseInt(val))}
                       disabled={u.id === 'admin'}
-                      className="bg-white dark:bg-zinc-900/50 border border-zinc-300/50 dark:border-white/10 text-zinc-900/75 dark:text-white text-sm rounded-lg px-2 py-1.5 focus:ring-violet-500 focus:border-violet-500/50 focus:outline-none"
                     >
-                      <option value={1}>Guest</option>
-                      <option value={2}>User</option>
-                      <option value={3}>Admin</option>
-                    </select>
+                      <SelectTrigger className="w-28 bg-white dark:bg-zinc-900/50 border border-zinc-300/50 dark:border-white/10">
+                        <SelectValue placeholder="Role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Guest</SelectItem>
+                        <SelectItem value="2">User</SelectItem>
+                        <SelectItem value="3">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </td>
                   <td className="px-6 py-4">
                     {u.is_banned ? (

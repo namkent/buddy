@@ -10,6 +10,7 @@ export async function GET() {
   }
 
   try {
+    await dbConnection.initTables();
     const settings = await dbConnection.settings.getAll();
     return NextResponse.json(settings);
   } catch (error) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -46,9 +47,9 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings: payload })
       });
-      alert("Settings saved successfully!");
+      toast.success("Settings saved successfully!");
     } catch {
-      alert("Error saving settings");
+      toast.error("Error saving settings");
     } finally {
       setSaving(false);
     }
@@ -60,7 +61,7 @@ export default function SettingsPage() {
       await fetch(`/api/admin/suggestions?id=${id}`, { method: "DELETE" });
       setSuggestions(prev => prev.filter(s => s.id !== id));
     } catch {
-      alert("Error deleting");
+      toast.error("Error deleting");
     }
   };
 
@@ -73,7 +74,7 @@ export default function SettingsPage() {
       });
       setSuggestions(prev => prev.map(s => s.id === id ? { ...s, active: !currentActive } : s));
     } catch {
-      alert("Error updating");
+      toast.error("Error updating");
     }
   };
 
@@ -98,7 +99,7 @@ export default function SettingsPage() {
         setNewPrompt("");
       }
     } catch {
-      alert("Error creating suggestion");
+      toast.error("Error creating suggestion");
     }
     setCreating(false);
   };
@@ -109,7 +110,8 @@ export default function SettingsPage() {
     try {
       const r = await fetch("/api/cron/suggestions");
       const json = await r.json();
-      alert(json.success ? "Generated! Refreshing..." : "Failed: " + json.error);
+      if (json.success) toast.success("Generated! Refreshing...");
+      else toast.error("Failed: " + json.error);
       await loadSettings();
     } catch {
       // ignore
@@ -126,7 +128,7 @@ export default function SettingsPage() {
     }`;
 
   return (
-    <div className="max-w-4xl w-full mx-auto space-y-6">
+    <div className="max-w-6xl w-full mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">System Settings</h1>
         <p className="text-muted-foreground mt-2">Manage application configuration, AI behavior, and thread suggestions.</p>
@@ -138,84 +140,129 @@ export default function SettingsPage() {
       </div>
 
       {activeTab === "general" && (
-        <form onSubmit={handleSaveSettings} className="space-y-6 bg-white dark:bg-white/5 p-6 rounded-xl border border-zinc-200 dark:border-white/10 shadow-sm">
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">UI &amp; Branding</h3>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Welcome Title</label>
-              <input
-                type="text"
-                value={settings.WELCOME_TITLE || ""}
-                onChange={e => setSettings({ ...settings, WELCOME_TITLE: e.target.value })}
-                className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Welcome Subtitle</label>
-              <input
-                type="text"
-                value={settings.WELCOME_SUBTITLE || ""}
-                onChange={e => setSettings({ ...settings, WELCOME_SUBTITLE: e.target.value })}
-                className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-          </div>
+        <form onSubmit={handleSaveSettings} className="bg-white dark:bg-white/5 p-6 rounded-xl border border-zinc-200 dark:border-white/10 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
-          <hr className="border-zinc-200 dark:border-zinc-800" />
-
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">AI Configuration</h3>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">System Prompt</label>
-              <textarea
-                rows={4}
-                value={settings.SYSTEM_PROMPT || ""}
-                onChange={e => setSettings({ ...settings, SYSTEM_PROMPT: e.target.value })}
-                className="w-full flex min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <p className="text-xs text-muted-foreground">The foundation prompt for the AI Assistant&apos;s personality and rules.</p>
-            </div>
-          </div>
-
-          <hr className="border-zinc-200 dark:border-zinc-800" />
-
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">System Tools Toggles</h3>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Enable Translation Tool</p>
-                <p className="text-xs text-muted-foreground">Allows LLM to invoke translation scripts.</p>
+            {/* Cột Trái: UI & Access Control */}
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">UI &amp; Branding</h3>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Welcome Title</label>
+                  <input
+                    type="text"
+                    value={settings.WELCOME_TITLE || ""}
+                    onChange={e => setSettings({ ...settings, WELCOME_TITLE: e.target.value })}
+                    className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Welcome Subtitle</label>
+                  <input
+                    type="text"
+                    value={settings.WELCOME_SUBTITLE || ""}
+                    onChange={e => setSettings({ ...settings, WELCOME_SUBTITLE: e.target.value })}
+                    className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={settings.ENABLE_TOOL_TRANSLATE === "true"}
-                  onChange={e => setSettings({ ...settings, ENABLE_TOOL_TRANSLATE: e.target.checked ? "true" : "false" })}
-                />
-                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
-              </label>
+
+              <hr className="border-zinc-200 dark:border-zinc-800" />
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Access Control</h3>
+                <div className="flex items-center justify-between pb-2">
+                  <div>
+                    <p className="font-medium text-red-600 dark:text-red-400">Enable Guest Access</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 max-w-[200px] xl:max-w-[250px]">Cho phép tất cả user Guest được chat với hệ thống mà không bị chặn.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={settings.ENABLE_GUEST_ACCESS === "true"}
+                      onChange={e => setSettings({ ...settings, ENABLE_GUEST_ACCESS: e.target.checked ? "true" : "false" })}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
+                  </label>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Enable RAG Document Search</p>
-                <p className="text-xs text-muted-foreground">Allows LLM to fetch chunks from your document storage.</p>
+            {/* Cột Phải: AI & Tools */}
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">AI Configuration</h3>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">System Prompt</label>
+                  <textarea
+                    rows={4}
+                    value={settings.SYSTEM_PROMPT || ""}
+                    onChange={e => setSettings({ ...settings, SYSTEM_PROMPT: e.target.value })}
+                    className="w-full flex min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <p className="text-xs text-muted-foreground">The foundation prompt for the AI Assistant&apos;s personality and rules.</p>
+                </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={settings.ENABLE_TOOL_RAG_SEARCH === "true"}
-                  onChange={e => setSettings({ ...settings, ENABLE_TOOL_RAG_SEARCH: e.target.checked ? "true" : "false" })}
-                />
-                <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
-              </label>
+
+              <hr className="border-zinc-200 dark:border-zinc-800" />
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">System Tools Toggles</h3>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Enable Summarize Slash Command</p>
+                    <p className="text-xs text-muted-foreground">Cho phép AI hỗ trợ Slash Command Tóm tắt cuộc trò chuyện.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={settings.ENABLE_TOOL_SUMMARIZE !== "false"}
+                      onChange={e => setSettings({ ...settings, ENABLE_TOOL_SUMMARIZE: e.target.checked ? "true" : "false" })}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Enable Translate Slash Command</p>
+                    <p className="text-xs text-muted-foreground">Hiển thị Menu cấp 1 về Translate và cho phép AI dịch thuật.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={settings.ENABLE_TOOL_TRANSLATE !== "false"}
+                      onChange={e => setSettings({ ...settings, ENABLE_TOOL_TRANSLATE: e.target.checked ? "true" : "false" })}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Enable RAG Document Search</p>
+                    <p className="text-xs text-muted-foreground">Hiện thị Slash Command Search RAG để tra cứu CSDL kiến thức.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={settings.ENABLE_TOOL_RAG_SEARCH !== "false"}
+                      onChange={e => setSettings({ ...settings, ENABLE_TOOL_RAG_SEARCH: e.target.checked ? "true" : "false" })}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
+                  </label>
+                </div>
+              </div>
             </div>
+
           </div>
 
-          <div className="pt-4 flex justify-end">
+          <div className="pt-6 flex justify-end">
             <Button type="submit" disabled={saving}>
               {saving ? "Saving..." : "Save Settings"}
             </Button>

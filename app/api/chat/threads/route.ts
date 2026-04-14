@@ -9,7 +9,10 @@ export async function GET(req: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
   
   const role = (session.user as any).role;
-  if (role === "guest") return NextResponse.json([]);
+  if (role === "guest") {
+    const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
+    if (enableGuest !== "true") return NextResponse.json([]);
+  }
   
   const userId = (session.user as any).userId;
 
@@ -31,7 +34,10 @@ export async function POST(req: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
   
   const role = (session.user as any).role;
-  if (role === "guest") return new NextResponse("Forbidden", { status: 403 });
+  if (role === "guest") {
+    const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
+    if (enableGuest !== "true") return new NextResponse("Forbidden", { status: 403 });
+  }
   
   const userId = (session.user as any).userId;
 
@@ -45,7 +51,10 @@ export async function PUT(req: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
   
   const role = (session.user as any).role;
-  if (role === "guest") return new NextResponse("Forbidden", { status: 403 });
+  if (role === "guest") {
+    const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
+    if (enableGuest !== "true") return new NextResponse("Forbidden", { status: 403 });
+  }
   
   const userId = (session.user as any).userId;
 
@@ -62,7 +71,10 @@ export async function DELETE(req: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
   
   const role = (session.user as any).role;
-  if (role === "guest") return new NextResponse("Forbidden", { status: 403 });
+  if (role === "guest") {
+    const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
+    if (enableGuest !== "true") return new NextResponse("Forbidden", { status: 403 });
+  }
   
   const userId = (session.user as any).userId;
 

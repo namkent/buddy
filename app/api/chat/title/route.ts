@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { dbConnection } from "@/lib/db";
 
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_KEY,
@@ -14,7 +15,10 @@ export async function POST(req: Request) {
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const role = (session.user as any).role;
-  if (role === "guest") return new Response("Forbidden", { status: 403 });
+  if (role === "guest") {
+    const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
+    if (enableGuest !== "true") return new Response("Forbidden", { status: 403 });
+  }
 
   try {
     const { message, isPeriodic } = await req.json();
