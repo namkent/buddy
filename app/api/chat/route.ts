@@ -2,7 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { JSONSchema7, streamText } from "ai";
+import { JSONSchema7, streamText, tool } from "ai";
 import { dbConnection } from "@/lib/db";
 
 const openai = createOpenAI({
@@ -161,16 +161,16 @@ export async function POST(req: Request) {
     if (trimmedContent === "/summarize" || trimmedContent === "[Summarize]") {
       isSlashCommand = true;
       resolvedSystemPrompt = "Bạn là trợ lý AI súc tích. Nhiệm vụ DUY NHẤT của bạn hiện tại là TÓM TẮT toàn bộ nội dung cuộc trò chuyện ở trên một cách rõ ràng và ngắn gọn nhất bằng các gạch đầu dòng. KHÔNG tự đưa ra câu trả lời mới, chỉ TÓM TẮT.";
-    } 
+    }
     else if (trimmedContent.startsWith("/search ") || trimmedContent.startsWith("[Search] ")) {
       isSlashCommand = true;
       const query = trimmedContent.replace(/^(\/search|\[Search\])\s+/i, '').trim();
       resolvedSystemPrompt = "Người dùng đang yêu cầu tìm kiếm tri thức nội bộ. Hiện tại tính năng RAG đang trong giai đoạn phát triển và mô phỏng. Hãy báo rằng bạn đã ghi nhận từ khoá tìm kiếm, liệt kê lại nó một cách trang trọng và đưa ra một vài ví dụ ngẫu nhiên mô phỏng quá trình tìm kiếm.";
       // Xoá trigger command khỏi phần LLM tiếp nhận
       if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
-         apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: `Tìm kiếm thông tin: ${query}` } : c);
+        apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: `Tìm kiếm thông tin: ${query}` } : c);
       } else {
-         apiMessages[apiMessages.length - 1].content = `Tìm kiếm thông tin: ${query}`;
+        apiMessages[apiMessages.length - 1].content = `Tìm kiếm thông tin: ${query}`;
       }
       cleanMessageContent = `Tìm kiếm thông tin: ${query}`;
     }
@@ -182,13 +182,13 @@ export async function POST(req: Request) {
         const lang = match[1].trim();
         const bodyContent = match[2].trim();
         resolvedSystemPrompt = `Bạn là một biên dịch viên ngôn ngữ bản xứ chuyên nghiệp. Người dùng muốn bạn dịch văn bản sang ngôn ngữ: **${lang}**.\n\nCHỈ TRẢ VỀ bản dịch sạch sẽ trực tiếp, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG thêm lời chào, KHÔNG bình luận thêm bất cứ từ nào ngoài bản dịch, KHÔNG bọc bản dịch trong dấu ngoặc kép hoặc các ký tự định dạng. Dịch một cách tự nhiên và chính xác nhất sát ngữ cảnh.`;
-        
+
         // Đảm bảo LLM chỉ nhận đúng nội dung cần dịch
         const targetContent = `Văn bản cần dịch sang ngôn ngữ ${lang}:\n\n${bodyContent || "(Trống)"}`;
         if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
-           apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: targetContent } : c);
+          apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: targetContent } : c);
         } else {
-           apiMessages[apiMessages.length - 1].content = targetContent;
+          apiMessages[apiMessages.length - 1].content = targetContent;
         }
         cleanMessageContent = bodyContent || "Dịch thuật";
       }
@@ -206,15 +206,17 @@ export async function POST(req: Request) {
     if (activeTools.ragSearch) delete activeTools.ragSearch;
   }
 
-  const finalSystemPrompt = isSlashCommand 
-    ? resolvedSystemPrompt 
+  const finalSystemPrompt = isSlashCommand
+    ? resolvedSystemPrompt
     : `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`;
 
   const result = streamText({
     model: openai.chat(selectedModel),
     messages: apiMessages,
     system: finalSystemPrompt,
-    tools: activeTools,
+    tools: {
+      ...frontendTools(tools ?? {}),
+    } as any,
     providerOptions: {
       openai: {
         reasoningEffort: "none",

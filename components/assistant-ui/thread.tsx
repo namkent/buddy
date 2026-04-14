@@ -44,7 +44,8 @@ import {
   FileTextIcon,
   LanguagesIcon,
   SlashIcon,
-  CommandIcon
+  CommandIcon,
+  ArrowLeft
 } from "lucide-react";
 import type { FC } from "react";
 
@@ -158,69 +159,63 @@ const Composer: FC = () => {
   const runtime = useAssistantRuntime();
 
   const slashAdapter = useMemo(() => {
+    const categoriesList = [
+      { id: "actions", label: "Actions" },
+      { id: "translate", label: "Translate" }
+    ];
+    const langs = [
+      { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
+      { id: "en", name: "English", emoji: "🇺🇸" },
+      { id: "ko", name: "Korean", emoji: "🇰🇷" },
+      { id: "zh", name: "Chinese", emoji: "🇨🇳" },
+      { id: "ja", name: "Japanese", emoji: "🇯🇵" }
+    ];
+    const actionsItems = [
+      { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
+      { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
+    ];
+    const translateItems = [
+      ...langs.map(l => ({
+        id: `translate_${l.id}`, type: "command", label: l.name, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji, langName: l.name
+      }))
+    ];
+    const allSearchItems = [
+      { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
+      { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
+      ...langs.map(l => ({
+        id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji, langName: l.name
+      }))
+    ];
+
     return {
       categories() {
-        return [
-          { id: "actions", label: "Actions" },
-          { id: "translate", label: "Translate" }
-        ];
+        return categoriesList;
       },
       categoryItems(categoryId: string) {
-        if (categoryId === "actions") {
-          return [
-            { id: "back", type: "command", label: "← Back", description: "Quay trở lại danh mục chính" },
-            { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
-            { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
-          ];
-        }
-        if (categoryId === "translate") {
-          const langs = [
-            { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
-            { id: "en", name: "English", emoji: "🇺🇸" },
-            { id: "ko", name: "Korean", emoji: "🇰🇷" },
-            { id: "zh", name: "Chinese", emoji: "🇨🇳" },
-            { id: "ja", name: "Japanese", emoji: "🇯🇵" }
-          ];
-          const results = langs.map(l => ({
-            id: `translate_${l.id}`, type: "command", label: l.name, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji
-          }));
-          results.unshift({ id: "back", type: "command", label: "← Back", description: "Quay trở lại danh mục chính" });
-          return results;
-        }
+        if (categoryId === "actions") return actionsItems;
+        if (categoryId === "translate") return translateItems;
         return [];
       },
       search(query: string) {
-        const lower = query.toLowerCase();
-        const all = [
-          { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
-          { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
-          ...[
-            { id: "en", name: "English", emoji: "🇺🇸" },
-            { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
-            { id: "ko", name: "Korean", emoji: "🇰🇷" },
-            { id: "zh", name: "Chinese", emoji: "🇨🇳" },
-            { id: "ja", name: "Japanese", emoji: "🇯🇵" }
-          ].map(l => ({
-            id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji
-          }))
-        ];
-        return all.filter(
-          (item: any) => item.label.toLowerCase().includes(lower) || item.description?.toLowerCase().includes(lower)
+        const lower = query.trim().toLowerCase();
+        if (!lower) return [];
+
+        return allSearchItems.filter((i: any) => 
+          i.label.toLowerCase().includes(lower) || i.description?.toLowerCase().includes(lower)
         );
       }
     };
   }, []);
 
   const handleSlashSelect = (item: any) => {
-    if (item.id === "back") {
-      setTimeout(() => runtime.thread.composer.setText("/"), 10);
-    } else if (item.id === "summarize") {
+    // Xử lý lệnh thực tế
+    if (item.id === "summarize") {
       runtime.thread.append({ role: "user", content: [{ type: "text", text: "[Summarize]" }] });
     } else if (item.id === "search") {
       runtime.thread.composer.setText("[Search] ");
     } else if (item.id.startsWith("translate_")) {
-      const langName = item.label.replace("Translate to ", "");
-      runtime.thread.composer.setText(`[Translate ${langName}]\n`);
+      const targetLang = item.langName || item.label.replace("Translate to ", "");
+      runtime.thread.composer.setText(`[Translate ${targetLang}]:\n`);
     }
   };
 
@@ -229,10 +224,15 @@ const Composer: FC = () => {
       <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
         {/* === POPUP SLASH COMMANDS === */}
         <ComposerPrimitive.Unstable_TriggerPopoverPopover className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg animate-in slide-in-from-bottom-2">
+          
+          <ComposerPrimitive.Unstable_TriggerPopoverBack className="w-full flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold outline-none transition-colors hover:bg-accent focus:bg-accent border-b text-muted-foreground">
+            <ArrowLeft className="size-3.5" />
+            Back
+          </ComposerPrimitive.Unstable_TriggerPopoverBack>
 
           <ComposerPrimitive.Unstable_TriggerPopoverCategories>
-            {(categories) => categories.length > 0 && (
-              <div className="py-1 border-b">
+            {(categories) => (
+              <div aria-orientation="vertical" className={categories.length > 0 ? "flex flex-col p-1 border-b" : "hidden"}>
                 {categories.map((cat) => {
                   let CatIcon = CommandIcon;
                   if (cat.id === "translate") CatIcon = LanguagesIcon;
@@ -240,9 +240,9 @@ const Composer: FC = () => {
                     <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
                       key={cat.id}
                       categoryId={cat.id}
-                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm font-semibold outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-primary text-zinc-700 dark:text-zinc-300"
+                      className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-primary text-zinc-700 dark:text-zinc-300"
                     >
-                      <CatIcon className="size-4" />
+                      <CatIcon className="size-3.5" />
                       {cat.label}
                     </ComposerPrimitive.Unstable_TriggerPopoverCategoryItem>
                   );
@@ -252,14 +252,15 @@ const Composer: FC = () => {
           </ComposerPrimitive.Unstable_TriggerPopoverCategories>
 
           <ComposerPrimitive.Unstable_TriggerPopoverItems>
-            {(items) => items.length > 0 && (
-              <div className="py-1 max-h-64 overflow-y-auto scrollbar-thin">
+            {(items) => (
+              <div className={items.length > 0 ? "py-1 max-h-64 overflow-y-auto scrollbar-thin" : "hidden"}>
                 {items.map((item: any, index) => {
                   let IconComp = SlashIcon;
                   if (item.id === "search") IconComp = GlobeIcon;
                   else if (item.id === "summarize") IconComp = FileTextIcon;
-                  else if (item.id === "back") IconComp = ChevronLeftIcon;
-                  else if (item.id.startsWith("translate")) IconComp = LanguagesIcon;
+                  else if (item.id === "back") IconComp = ArrowLeft;
+                  else if (item.id === "category_actions") IconComp = CommandIcon;
+                  else if (item.id === "category_translate" || item.id.startsWith("translate_")) IconComp = LanguagesIcon;
 
                   return (
                     <ComposerPrimitive.Unstable_TriggerPopoverItem
