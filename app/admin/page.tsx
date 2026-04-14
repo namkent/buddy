@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Users, MessagesSquare, MessageCircle, Wifi, Trophy } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface TopUser { user_name: string; email: string; avatar: string; msg_count: number }
 interface WeeklyMsg { day_label: string; day_date: string; count: number }
@@ -93,7 +94,7 @@ export default function AdminDashboardPage() {
           {statCards.map(({ label, value, color, Icon }) => {
             const [gradFrom, gradBorder, labelColor, iconBg, iconColor] = colorMap[color].split(" ");
             return (
-              <div key={label} className={`rounded-2xl bg-gradient-to-br ${gradFrom} to-transparent border ${gradBorder} p-5 flex items-center justify-between shadow-lg`}>
+              <div key={label} className={`rounded-xl bg-gradient-to-br ${gradFrom} to-transparent border ${gradBorder} p-5 flex items-center justify-between shadow-sm`}>
                 <div>
                   <p className={`text-xs font-semibold ${labelColor} uppercase tracking-wider mb-1`}>{label}</p>
                   <h2 className="text-4xl font-bold text-zinc-900 dark:text-white">{value}</h2>
@@ -111,34 +112,37 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
         {/* Weekly Messages Chart */}
-        <div className="lg:col-span-3 rounded-2xl border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-white/5 p-6 shadow-xl">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Messages — Last 7 Days</h3>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">User messages sent each day</p>
-          </div>
-          {loading ? (
-            <div className="h-48 animate-pulse rounded-xl bg-zinc-200 dark:bg-white/5" />
-          ) : stats.weeklyMessages.length === 0 ? (
-            <div className="h-40 flex items-center justify-center text-zinc-400 text-sm">Chưa có dữ liệu trong 7 ngày qua</div>
-          ) : (
-            <WeeklyBarChart data={stats.weeklyMessages} />
-          )}
-        </div>
+        <Card className="lg:col-span-3 shadow-sm border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 rounded-xl">
+          <CardHeader>
+            <CardTitle className="text-lg">Messages — Last 7 Days</CardTitle>
+            <CardDescription>User messages sent each day</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="h-48 animate-pulse rounded-xl bg-zinc-200 dark:bg-white/5" />
+            ) : stats.weeklyMessages.length === 0 ? (
+              <div className="h-40 flex items-center justify-center text-zinc-400 text-sm">Chưa có dữ liệu trong 7 ngày qua</div>
+            ) : (
+              <WeeklyBarChart data={stats.weeklyMessages} />
+            )}
+          </CardContent>
+        </Card>
 
         {/* Top 10 Users */}
-        <div className="lg:col-span-2 rounded-2xl border border-zinc-200 dark:border-white/10 bg-white/70 dark:bg-white/5 p-6 shadow-xl">
-          <div className="mb-4 flex items-center gap-2">
+        <Card className="lg:col-span-2 shadow-sm border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 rounded-xl">
+          <CardHeader className="flex flex-row items-center gap-2 space-y-0">
             <Trophy className="size-5 text-amber-500" />
-            <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Top 10 Active Users</h3>
-          </div>
-          {loading ? (
-            <div className="space-y-3 animate-pulse">
-              {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 rounded-lg bg-zinc-200 dark:bg-white/5" />)}
-            </div>
-          ) : stats.topUsers.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-zinc-400 text-sm">Chưa có dữ liệu</div>
-          ) : (
-            <ol className="space-y-2">
+            <CardTitle className="text-lg">Top 10 Active Users</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3 animate-pulse">
+                {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 rounded-lg bg-zinc-200 dark:bg-white/5" />)}
+              </div>
+            ) : stats.topUsers.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-zinc-400 text-sm">Chưa có dữ liệu</div>
+            ) : (
+              <ol className="space-y-2">
               {stats.topUsers.map((u, idx) => (
                 <li key={u.email} className="flex items-center gap-3 py-1">
                   <span className={`text-sm font-bold w-5 text-right ${idx === 0 ? "text-amber-500" : idx === 1 ? "text-zinc-400" : idx === 2 ? "text-amber-700 dark:text-amber-600" : "text-zinc-400"}`}>
@@ -157,9 +161,10 @@ export default function AdminDashboardPage() {
                   <span className="text-sm font-semibold text-violet-600 dark:text-violet-300 tabular-nums">{u.msg_count}</span>
                 </li>
               ))}
-            </ol>
-          )}
-        </div>
+              </ol>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

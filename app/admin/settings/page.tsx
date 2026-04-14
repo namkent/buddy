@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
@@ -121,12 +125,6 @@ export default function SettingsPage() {
 
   if (loading) return <div className="p-8 animate-pulse text-center">Loading settings...</div>;
 
-  const tabClass = (tab: string) =>
-    `px-4 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === tab
-      ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-    }`;
-
   return (
     <div className="max-w-6xl w-full mx-auto space-y-6">
       <div>
@@ -134,13 +132,14 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-2">Manage application configuration, AI behavior, and thread suggestions.</p>
       </div>
 
-      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-2">
-        <button onClick={() => setActiveTab("general")} className={tabClass("general")}>General Config</button>
-        <button onClick={() => setActiveTab("suggestions")} className={tabClass("suggestions")}>Thread Suggestions</button>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-2">
+          <TabsTrigger value="general">General Config</TabsTrigger>
+          <TabsTrigger value="suggestions">Thread Suggestions</TabsTrigger>
+        </TabsList>
 
-      {activeTab === "general" && (
-        <form onSubmit={handleSaveSettings} className="bg-white dark:bg-white/5 p-6 rounded-xl border border-zinc-200 dark:border-white/10 shadow-sm">
+        <TabsContent value="general">
+          <form onSubmit={handleSaveSettings} className="bg-white dark:bg-white/5 p-6 rounded-xl border border-zinc-200 dark:border-white/10 shadow-sm">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
             {/* Cột Trái: UI & Access Control */}
@@ -149,20 +148,16 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-semibold">UI &amp; Branding</h3>
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">Welcome Title</label>
-                  <input
-                    type="text"
+                  <Input
                     value={settings.WELCOME_TITLE || ""}
                     onChange={e => setSettings({ ...settings, WELCOME_TITLE: e.target.value })}
-                    className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">Welcome Subtitle</label>
-                  <input
-                    type="text"
+                  <Input
                     value={settings.WELCOME_SUBTITLE || ""}
                     onChange={e => setSettings({ ...settings, WELCOME_SUBTITLE: e.target.value })}
-                    className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
               </div>
@@ -176,15 +171,12 @@ export default function SettingsPage() {
                     <p className="font-medium text-red-600 dark:text-red-400">Enable Guest Access</p>
                     <p className="text-xs text-muted-foreground line-clamp-2 max-w-[200px] xl:max-w-[250px]">Cho phép tất cả user Guest được chat với hệ thống mà không bị chặn.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
+                  <div>
+                    <Switch
                       checked={settings.ENABLE_GUEST_ACCESS === "true"}
-                      onChange={e => setSettings({ ...settings, ENABLE_GUEST_ACCESS: e.target.checked ? "true" : "false" })}
+                      onCheckedChange={checked => setSettings({ ...settings, ENABLE_GUEST_ACCESS: checked ? "true" : "false" })}
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
-                  </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -195,11 +187,10 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-semibold">AI Configuration</h3>
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">System Prompt</label>
-                  <textarea
+                  <Textarea
                     rows={4}
                     value={settings.SYSTEM_PROMPT || ""}
                     onChange={e => setSettings({ ...settings, SYSTEM_PROMPT: e.target.value })}
-                    className="w-full flex min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <p className="text-xs text-muted-foreground">The foundation prompt for the AI Assistant&apos;s personality and rules.</p>
                 </div>
@@ -215,15 +206,12 @@ export default function SettingsPage() {
                     <p className="font-medium">Enable Summarize Slash Command</p>
                     <p className="text-xs text-muted-foreground">Cho phép AI hỗ trợ Slash Command Tóm tắt cuộc trò chuyện.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
+                  <div>
+                    <Switch
                       checked={settings.ENABLE_TOOL_SUMMARIZE !== "false"}
-                      onChange={e => setSettings({ ...settings, ENABLE_TOOL_SUMMARIZE: e.target.checked ? "true" : "false" })}
+                      onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_SUMMARIZE: checked ? "true" : "false" })}
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
-                  </label>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -231,15 +219,12 @@ export default function SettingsPage() {
                     <p className="font-medium">Enable Translate Slash Command</p>
                     <p className="text-xs text-muted-foreground">Hiển thị Menu cấp 1 về Translate và cho phép AI dịch thuật.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
+                  <div>
+                    <Switch
                       checked={settings.ENABLE_TOOL_TRANSLATE !== "false"}
-                      onChange={e => setSettings({ ...settings, ENABLE_TOOL_TRANSLATE: e.target.checked ? "true" : "false" })}
+                      onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_TRANSLATE: checked ? "true" : "false" })}
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
-                  </label>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -247,15 +232,12 @@ export default function SettingsPage() {
                     <p className="font-medium">Enable RAG Document Search</p>
                     <p className="text-xs text-muted-foreground">Hiện thị Slash Command Search RAG để tra cứu CSDL kiến thức.</p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
+                  <div>
+                    <Switch
                       checked={settings.ENABLE_TOOL_RAG_SEARCH !== "false"}
-                      onChange={e => setSettings({ ...settings, ENABLE_TOOL_RAG_SEARCH: e.target.checked ? "true" : "false" })}
+                      onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_RAG_SEARCH: checked ? "true" : "false" })}
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-violet-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:bg-gray-700"></div>
-                  </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -267,11 +249,11 @@ export default function SettingsPage() {
               {saving ? "Saving..." : "Save Settings"}
             </Button>
           </div>
-        </form>
-      )}
+          </form>
+        </TabsContent>
 
-      {activeTab === "suggestions" && (
-        <div className="flex flex-col md:flex-row items-start gap-6">
+        <TabsContent value="suggestions">
+          <div className="flex flex-col md:flex-row items-start gap-6">
           {/* Cột Trái: Controls & Form */}
           <div className="w-full md:w-1/3 space-y-4 shrink-0">
             <div className="bg-zinc-100 dark:bg-zinc-900 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-3">
@@ -288,24 +270,22 @@ export default function SettingsPage() {
               <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Create Manual Suggestion</h3>
               <div className="grid gap-1.5">
                 <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Title (short)</label>
-                <input
-                  type="text"
+                <Input
                   placeholder="VD: Tình trạng MES server hôm nay"
                   value={newTitle}
                   onChange={e => setNewTitle(e.target.value)}
                   required
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
               <div className="grid gap-1.5">
                 <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Prompt (complete question sent to AI)</label>
-                <textarea
+                <Textarea
                   rows={3}
                   placeholder="VD: Hãy kiểm tra và báo cáo tình trạng hoạt động..."
                   value={newPrompt}
                   onChange={e => setNewPrompt(e.target.value)}
                   required
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  className="resize-none"
                 />
               </div>
               <div className="flex justify-end pt-1">
@@ -349,7 +329,8 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
