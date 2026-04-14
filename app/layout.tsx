@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { HeartbeatProvider } from "@/components/assistant-ui/heartbeat-provider";
 import "./globals.css";
+import "katex/dist/katex.min.css";
 
 const GoogleSans = localFont({
   src: "../public/fonts/GoogleSans.ttf",

@@ -9,6 +9,8 @@ import {
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { type FC, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
@@ -17,15 +19,25 @@ import { SyntaxHighlighter } from "@/components/assistant-ui/shiki-highlighter";
 import { MermaidDiagram } from "@/components/assistant-ui/mermaid-diagram";
 import { cn } from "@/lib/utils";
 
+// Chặn cảnh báo console.warn rác từ KaTeX khi gặp ký tự tiếng Việt (mặc định KaTeX không có metric size cho Unicode)
+if (typeof console !== "undefined") {
+  const originalWarn = console.warn;
+  console.warn = (...args: any[]) => {
+    if (typeof args[0] === "string" && args[0].includes("No character metrics for")) return;
+    originalWarn(...args);
+  };
+}
+
 const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[[rehypeKatex, { strict: false }]]}
       className="aui-md"
       components={defaultComponents}
       componentsByLanguage={{
         mermaid: {
-          SyntaxHighlighter: MermaidDiagram 
+          SyntaxHighlighter: MermaidDiagram
         },
       }}
     />
@@ -240,7 +252,7 @@ const defaultComponents = memoizeMarkdownComponents({
       <code
         className={cn(
           !isCodeBlock &&
-            "aui-md-inline-code rounded-md border border-border/50 bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em]",
+          "aui-md-inline-code rounded-md border border-border/50 bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em]",
           className,
         )}
         {...props}

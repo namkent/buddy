@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   ComposerAddAttachment,
   ComposerAttachments,
@@ -39,7 +39,12 @@ import {
   RefreshCwIcon,
   SquareIcon,
   ThumbsUpIcon,
-  ThumbsDownIcon
+  ThumbsDownIcon,
+  GlobeIcon,
+  FileTextIcon,
+  LanguagesIcon,
+  SlashIcon,
+  CommandIcon
 } from "lucide-react";
 import type { FC } from "react";
 
@@ -150,25 +155,159 @@ const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
 };
 
 const Composer: FC = () => {
+  const runtime = useAssistantRuntime();
+
+  const slashAdapter = useMemo(() => {
+    return {
+      categories() {
+        return [
+          { id: "actions", label: "Actions" },
+          { id: "translate", label: "Translate" }
+        ];
+      },
+      categoryItems(categoryId: string) {
+        if (categoryId === "actions") {
+          return [
+            { id: "back", type: "command", label: "← Back", description: "Quay trở lại danh mục chính" },
+            { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
+            { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
+          ];
+        }
+        if (categoryId === "translate") {
+          const langs = [
+            { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
+            { id: "en", name: "English", emoji: "🇺🇸" },
+            { id: "ko", name: "Korean", emoji: "🇰🇷" },
+            { id: "zh", name: "Chinese", emoji: "🇨🇳" },
+            { id: "ja", name: "Japanese", emoji: "🇯🇵" }
+          ];
+          const results = langs.map(l => ({
+            id: `translate_${l.id}`, type: "command", label: l.name, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji
+          }));
+          results.unshift({ id: "back", type: "command", label: "← Back", description: "Quay trở lại danh mục chính" });
+          return results;
+        }
+        return [];
+      },
+      search(query: string) {
+        const lower = query.toLowerCase();
+        const all = [
+          { id: "summarize", type: "command", label: "Summarize", description: "Tóm tắt nội dung chat" },
+          { id: "search", type: "command", label: "Search", description: "Tìm kiếm trong kho dữ liệu (RAG)" },
+          ...[
+            { id: "en", name: "English", emoji: "🇺🇸" },
+            { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
+            { id: "ko", name: "Korean", emoji: "🇰🇷" },
+            { id: "zh", name: "Chinese", emoji: "🇨🇳" },
+            { id: "ja", name: "Japanese", emoji: "🇯🇵" }
+          ].map(l => ({
+            id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Dịch văn bản sang tiếng ${l.name}`, emoji: l.emoji
+          }))
+        ];
+        return all.filter(
+          (item: any) => item.label.toLowerCase().includes(lower) || item.description?.toLowerCase().includes(lower)
+        );
+      }
+    };
+  }, []);
+
+  const handleSlashSelect = (item: any) => {
+    if (item.id === "back") {
+      setTimeout(() => runtime.thread.composer.setText("/"), 10);
+    } else if (item.id === "summarize") {
+      runtime.thread.append({ role: "user", content: [{ type: "text", text: "[Summarize]" }] });
+    } else if (item.id === "search") {
+      runtime.thread.composer.setText("[Search] ");
+    } else if (item.id.startsWith("translate_")) {
+      const langName = item.label.replace("Translate to ", "");
+      runtime.thread.composer.setText(`[Translate ${langName}]\n`);
+    }
+  };
+
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone asChild>
-        <div
-          data-slot="composer-shell"
-          className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
-        >
-          <ComposerAttachments />
-          <ComposerPrimitive.Input
-            placeholder="Ask anything..."
-            className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
-            rows={1}
-            autoFocus
-            aria-label="Message input"
-          />
-          <ComposerAction />
-        </div>
-      </ComposerPrimitive.AttachmentDropzone>
-    </ComposerPrimitive.Root>
+    <ComposerPrimitive.Unstable_SlashCommandRoot adapter={slashAdapter as any} onSelect={handleSlashSelect}>
+      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+        {/* === POPUP SLASH COMMANDS === */}
+        <ComposerPrimitive.Unstable_TriggerPopoverPopover className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg animate-in slide-in-from-bottom-2">
+
+          <ComposerPrimitive.Unstable_TriggerPopoverCategories>
+            {(categories) => categories.length > 0 && (
+              <div className="py-1 border-b">
+                {categories.map((cat) => {
+                  let CatIcon = CommandIcon;
+                  if (cat.id === "translate") CatIcon = LanguagesIcon;
+                  return (
+                    <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
+                      key={cat.id}
+                      categoryId={cat.id}
+                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm font-semibold outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-primary text-zinc-700 dark:text-zinc-300"
+                    >
+                      <CatIcon className="size-4" />
+                      {cat.label}
+                    </ComposerPrimitive.Unstable_TriggerPopoverCategoryItem>
+                  );
+                })}
+              </div>
+            )}
+          </ComposerPrimitive.Unstable_TriggerPopoverCategories>
+
+          <ComposerPrimitive.Unstable_TriggerPopoverItems>
+            {(items) => items.length > 0 && (
+              <div className="py-1 max-h-64 overflow-y-auto scrollbar-thin">
+                {items.map((item: any, index) => {
+                  let IconComp = SlashIcon;
+                  if (item.id === "search") IconComp = GlobeIcon;
+                  else if (item.id === "summarize") IconComp = FileTextIcon;
+                  else if (item.id === "back") IconComp = ChevronLeftIcon;
+                  else if (item.id.startsWith("translate")) IconComp = LanguagesIcon;
+
+                  return (
+                    <ComposerPrimitive.Unstable_TriggerPopoverItem
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      className="flex w-full cursor-pointer flex-col items-start gap-0.5 px-3 py-2 text-left outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent"
+                    >
+                      <span className="flex items-center gap-2 font-medium text-sm text-foreground">
+                        {item.emoji ? (
+                          <span className="text-base leading-none w-3.5 flex items-center justify-center mr-0.5">{item.emoji}</span>
+                        ) : (
+                          <IconComp className="size-3.5 text-primary" />
+                        )}
+                        {item.label}
+                      </span>
+                      {item.description && (
+                        <span className="ml-5.5 text-muted-foreground text-[11px] leading-tight max-w-[90%] break-words">
+                          {item.description}
+                        </span>
+                      )}
+                    </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                  );
+                })}
+              </div>
+            )}
+          </ComposerPrimitive.Unstable_TriggerPopoverItems>
+        </ComposerPrimitive.Unstable_TriggerPopoverPopover>
+
+        {/* === COMPOSER DROPZONE === */}
+        <ComposerPrimitive.AttachmentDropzone asChild>
+          <div
+            data-slot="composer-shell"
+            className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
+          >
+            <ComposerAttachments />
+            <ComposerPrimitive.Input
+              placeholder="Ask anything or type / for commands..."
+              className="aui-composer-input max-h-[40vh] overflow-y-auto min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80 focus:outline-none scrollbar-thin"
+              rows={1}
+              autoFocus
+              aria-label="Message input"
+            />
+            <ComposerAction />
+          </div>
+        </ComposerPrimitive.AttachmentDropzone>
+      </ComposerPrimitive.Root>
+    </ComposerPrimitive.Unstable_SlashCommandRoot>
   );
 };
 
@@ -237,12 +376,12 @@ const AssistantMessage: FC = () => {
 
         <AuiIf condition={(s) => s.message?.status?.type === "running" && !s.message.content.length}>
           <div className="flex gap-1 py-4">
-             <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.3s]"></div>
-             <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.15s]"></div>
-             <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50"></div>
+            <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.3s]"></div>
+            <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:-0.15s]"></div>
+            <div className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/50"></div>
           </div>
         </AuiIf>
-        
+
         <MessageError />
       </div>
 

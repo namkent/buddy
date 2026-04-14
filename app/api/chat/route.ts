@@ -6,8 +6,8 @@ import { JSONSchema7, streamText } from "ai";
 import { dbConnection } from "@/lib/db";
 
 const openai = createOpenAI({
-  apiKey: process.env.GROQ_KEY,
-  baseURL: process.env.GROQ_BASE_URL,
+  apiKey: process.env.OPENAI_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
 });
 
 export async function POST(req: Request) {
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
   // Fire-and-forget: cập nhật last_active không làm chậm request
   if (userId) {
-    dbConnection.users.updateLastActive(userId).catch(() => {});
+    dbConnection.users.updateLastActive(userId).catch(() => { });
   }
 
   let apiMessages: any[] = [];
@@ -69,15 +69,15 @@ export async function POST(req: Request) {
       } catch (e) {
         parsedContent = m.content;
       }
-      
+
       return {
         role: m.role,
         content: Array.isArray(parsedContent)
           ? parsedContent.map((c: any) => {
-              if (c.type === "text") return { type: "text", text: c.text };
-              if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
-              return null;
-            }).filter(Boolean)
+            if (c.type === "text") return { type: "text", text: c.text };
+            if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+            return null;
+          }).filter(Boolean)
           : String(m.content).replace(/<think>[\s\S]*?<\/think>/g, "")
       };
     });
@@ -90,10 +90,10 @@ export async function POST(req: Request) {
         role: message.role,
         content: Array.isArray(message.content)
           ? message.content.map((c: any) => {
-              if (c.type === "text") return { type: "text", text: c.text };
-              if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
-              return null;
-            }).filter(Boolean)
+            if (c.type === "text") return { type: "text", text: c.text };
+            if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+            return null;
+          }).filter(Boolean)
           : message.content
       });
     }
@@ -103,18 +103,18 @@ export async function POST(req: Request) {
       role: message.role,
       content: Array.isArray(message.content)
         ? message.content.map((c: any) => {
-            if (c.type === "text") return { type: "text", text: c.text };
-            if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
-            return null;
-          }).filter(Boolean)
+          if (c.type === "text") return { type: "text", text: c.text };
+          if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+          return null;
+        }).filter(Boolean)
         : message.content
     });
   }
 
   // Lấy content sạch từ tin nhắn cuối cùng của user để nạp Memory
-  const cleanMessageContent = Array.isArray(message.content)
+  let cleanMessageContent: string = Array.isArray(message.content)
     ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
-    : message.content;
+    : String(message.content);
 
   // --- MEM0 MEMORY INTEGRATION ---
   let memoryContextStr = "";
@@ -136,13 +136,13 @@ export async function POST(req: Request) {
   }
 
   // Scan whether any message has an image block to swap the model if needed
-  const hasImage = apiMessages.some(m => 
+  const hasImage = apiMessages.some(m =>
     Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image')
   );
-  
-  const selectedModel = hasImage 
-    ? "llama-3.2-90b-vision-preview" 
-    : (process.env.GROQ_MODEL || "llama-3.3-70b-versatile");
+
+  const selectedModel = hasImage
+    ? "llama-3.2-90b-vision-preview"
+    : (process.env.OPENAI_MODEL || "llama-3.3-70b-versatile");
 
   // Lấy cấu hình hệ thống
   const [dbSystemPrompt, rawEnableTranslate, rawEnableRag] = await Promise.all([
@@ -151,10 +151,52 @@ export async function POST(req: Request) {
     dbConnection.settings.get("ENABLE_TOOL_RAG_SEARCH")
   ]);
 
-  const resolvedSystemPrompt = dbSystemPrompt || "Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống. Bạn mang phong cách như một đồng nghiệp thông minh, thân thiện.";
+  let resolvedSystemPrompt = dbSystemPrompt || "Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống. Bạn mang phong cách như một đồng nghiệp thông minh, thân thiện.";
+
+  let isSlashCommand = false;
+
+  // --- XỬ LÝ SLASH COMMANDS ---
+  if (typeof cleanMessageContent === "string") {
+    const trimmedContent = cleanMessageContent.trim();
+    if (trimmedContent === "/summarize" || trimmedContent === "[Summarize]") {
+      isSlashCommand = true;
+      resolvedSystemPrompt = "Bạn là trợ lý AI súc tích. Nhiệm vụ DUY NHẤT của bạn hiện tại là TÓM TẮT toàn bộ nội dung cuộc trò chuyện ở trên một cách rõ ràng và ngắn gọn nhất bằng các gạch đầu dòng. KHÔNG tự đưa ra câu trả lời mới, chỉ TÓM TẮT.";
+    } 
+    else if (trimmedContent.startsWith("/search ") || trimmedContent.startsWith("[Search] ")) {
+      isSlashCommand = true;
+      const query = trimmedContent.replace(/^(\/search|\[Search\])\s+/i, '').trim();
+      resolvedSystemPrompt = "Người dùng đang yêu cầu tìm kiếm tri thức nội bộ. Hiện tại tính năng RAG đang trong giai đoạn phát triển và mô phỏng. Hãy báo rằng bạn đã ghi nhận từ khoá tìm kiếm, liệt kê lại nó một cách trang trọng và đưa ra một vài ví dụ ngẫu nhiên mô phỏng quá trình tìm kiếm.";
+      // Xoá trigger command khỏi phần LLM tiếp nhận
+      if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
+         apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: `Tìm kiếm thông tin: ${query}` } : c);
+      } else {
+         apiMessages[apiMessages.length - 1].content = `Tìm kiếm thông tin: ${query}`;
+      }
+      cleanMessageContent = `Tìm kiếm thông tin: ${query}`;
+    }
+    else if (trimmedContent.startsWith("/translate ") || trimmedContent.startsWith("[Translate ")) {
+      // parse định dạng: "/translate Tiếng Việt:\n<nội-dung-cần-dịch>" hoặc "[Translate English]:\n..."
+      const match = trimmedContent.match(/^(?:\/translate|\[Translate)\s+(.*?)\]?:\s*([\s\S]*)$/i);
+      if (match) {
+        isSlashCommand = true;
+        const lang = match[1].trim();
+        const bodyContent = match[2].trim();
+        resolvedSystemPrompt = `Bạn là một biên dịch viên ngôn ngữ bản xứ chuyên nghiệp. Người dùng muốn bạn dịch văn bản sang ngôn ngữ: **${lang}**.\n\nCHỈ TRẢ VỀ bản dịch sạch sẽ trực tiếp, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG thêm lời chào, KHÔNG bình luận thêm bất cứ từ nào ngoài bản dịch, KHÔNG bọc bản dịch trong dấu ngoặc kép hoặc các ký tự định dạng. Dịch một cách tự nhiên và chính xác nhất sát ngữ cảnh.`;
+        
+        // Đảm bảo LLM chỉ nhận đúng nội dung cần dịch
+        const targetContent = `Văn bản cần dịch sang ngôn ngữ ${lang}:\n\n${bodyContent || "(Trống)"}`;
+        if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
+           apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: targetContent } : c);
+        } else {
+           apiMessages[apiMessages.length - 1].content = targetContent;
+        }
+        cleanMessageContent = bodyContent || "Dịch thuật";
+      }
+    }
+  }
 
   const activeTools = { ...frontendTools(tools ?? {}) };
-  
+
   if (rawEnableTranslate === "false" || rawEnableTranslate === "0") {
     // Nếu có tool dịch và đang bị tắt, xoá nó để LLM không gọi được
     if (activeTools.translate) delete activeTools.translate;
@@ -164,11 +206,14 @@ export async function POST(req: Request) {
     if (activeTools.ragSearch) delete activeTools.ragSearch;
   }
 
+  const finalSystemPrompt = isSlashCommand 
+    ? resolvedSystemPrompt 
+    : `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`;
+
   const result = streamText({
     model: openai.chat(selectedModel),
     messages: apiMessages,
-    system:
-      `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`,
+    system: finalSystemPrompt,
     tools: activeTools,
     providerOptions: {
       openai: {

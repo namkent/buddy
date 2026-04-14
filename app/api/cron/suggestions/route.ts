@@ -4,8 +4,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
 const openai = createOpenAI({
-  apiKey: process.env.GROQ_KEY,
-  baseURL: process.env.GROQ_BASE_URL,
+  apiKey: process.env.OPENAI_KEY,
+  baseURL: process.env.OPENAI_BASE_URL,
 });
 
 export const dynamic = 'force-dynamic';
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
 
 ${messagesText}
 
-Hãy đề xuất đúng 4 câu hỏi hoặc chủ đề hot/phổ biến nhất (thực tế và hữu ích) mà người dùng mới có thể tham khảo.
+Hãy đề xuất đúng 10 câu hỏi hoặc chủ đề hot/phổ biến nhất (thực tế và hữu ích) mà người dùng mới có thể tham khảo.
 Lưu ý quan trọng về ngôn ngữ:
 - Câu hỏi và diễn giải viết bằng tiếng Việt.
 - Với các thuật ngữ chuyên ngành IT, hệ thống, kỹ thuật (ví dụ: API, RAG, LLM, dashboard, database, deployment, server, MES, ERP, log, debug, endpoint, token...) thì GIỮ NGUYÊN tiếng Anh, KHÔNG dịch sang tiếng Việt.
@@ -45,9 +45,11 @@ Chỉ trả về JSON thuần túy, không giải thích, không markdown, theo 
 {"suggestions":[{"title":"Tên ngắn 5-7 chữ","prompt":"Câu hỏi đầy đủ người dùng sẽ gửi"},{"title":"...","prompt":"..."},{"title":"...","prompt":"..."},{"title":"...","prompt":"..."}]}`;
 
     const { text } = await generateText({
-      model: openai.chat(process.env.GROQ_MODEL || "llama-3.3-70b-versatile"),
+      model: openai.chat(process.env.OPENAI_MODEL || "llama-3.3-70b-versatile"),
       prompt: promptText,
     });
+
+    // console.log('suggestions', text);
 
     // Parse JSON từ response text
     let parsed: { suggestions: { title: string; prompt: string }[] };

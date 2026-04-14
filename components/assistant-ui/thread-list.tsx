@@ -63,7 +63,7 @@ const ThreadListItem: FC = () => {
 
   return (
     <ThreadListItemPrimitive.Root
-      className="aui-thread-list-item group flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted">
+      className="aui-thread-list-item shrink-0 group/item flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted">
       <ThreadListItemPrimitive.Trigger
         className="aui-thread-list-item-trigger flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-sm"
       >
@@ -81,7 +81,7 @@ const ThreadListItemMore: FC = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="aui-thread-list-item-more mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:bg-accent data-[state=open]:opacity-100 group-data-active:opacity-100"
+          className="aui-thread-list-item-more mr-2 size-7 p-0 opacity-0 transition-opacity group-hover/item:opacity-100 data-[state=open]:bg-accent data-[state=open]:opacity-100 group-data-active/item:opacity-100"
         >
           <MoreHorizontalIcon className="size-4" />
           <span className="sr-only">More options</span>

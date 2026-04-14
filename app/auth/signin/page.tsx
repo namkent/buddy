@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn, getProviders } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/assistant-ui/theme-toggle";
 
@@ -30,7 +30,7 @@ function IdpIcon() {
   );
 }
 
-export default function SignInPage() {
+function SignInContent() {
   const [providers, setProviders] = useState<Record<string, Provider>>({});
   const searchParams = useSearchParams();
   const errorParam = searchParams.get("error");
@@ -277,5 +277,17 @@ export default function SignInPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-50 dark:bg-[#0a0a0f] flex items-center justify-center">
+        <div className="animate-pulse text-zinc-500">Đang tải...</div>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   );
 }

@@ -224,56 +224,59 @@ export default function SettingsPage() {
       )}
 
       {activeTab === "suggestions" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between bg-zinc-100 dark:bg-zinc-900 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <div>
-              <h3 className="font-semibold text-zinc-900 dark:text-white">Daily Hot Trends Auto-Generation</h3>
-              <p className="text-sm text-zinc-500">LLM analyzes the latest chat queries every 24h to generate suggestions.</p>
-            </div>
-            <Button variant="outline" onClick={handleTriggerCron} disabled={saving}>
-              {saving ? "Wait..." : "Trigger Cron"}
-            </Button>
-          </div>
-
-          {/* Manual create form */}
-          <form onSubmit={handleCreateSuggestion} className="bg-white dark:bg-white/5 p-4 rounded-xl border border-zinc-200 dark:border-white/10 space-y-3">
-            <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Create Manual Suggestion</h3>
-            <div className="grid gap-1.5">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Title (short)</label>
-              <input
-                type="text"
-                placeholder="VD: Tình trạng MES server hôm nay"
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                required
-                className="w-full h-9 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Prompt (complete question sent to AI)</label>
-              <textarea
-                rows={2}
-                placeholder="VD: Hãy kiểm tra và báo cáo tình trạng hoạt động của các server MES hiện tại."
-                value={newPrompt}
-                onChange={e => setNewPrompt(e.target.value)}
-                required
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit" size="sm" disabled={creating}>
-                {creating ? "Đang tạo..." : "Add Suggestion"}
+        <div className="flex flex-col md:flex-row items-start gap-6">
+          {/* Cột Trái: Controls & Form */}
+          <div className="w-full md:w-1/3 space-y-4 shrink-0">
+            <div className="bg-zinc-100 dark:bg-zinc-900 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-3">
+              <div>
+                <h3 className="font-semibold text-zinc-900 dark:text-white">Auto-Generate Trends</h3>
+                <p className="text-xs text-zinc-500 mt-1">LLM analyzes the latest chat queries every 24h to generate suggestions.</p>
+              </div>
+              <Button variant="outline" className="w-full" onClick={handleTriggerCron} disabled={saving}>
+                {saving ? "Wait..." : "Trigger Cron"}
               </Button>
             </div>
-          </form>
 
-          <div className="grid gap-4 mt-6">
+            <form onSubmit={handleCreateSuggestion} className="bg-white dark:bg-white/5 p-4 rounded-xl border border-zinc-200 dark:border-white/10 space-y-3">
+              <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Create Manual Suggestion</h3>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Title (short)</label>
+                <input
+                  type="text"
+                  placeholder="VD: Tình trạng MES server hôm nay"
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  required
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Prompt (complete question sent to AI)</label>
+                <textarea
+                  rows={3}
+                  placeholder="VD: Hãy kiểm tra và báo cáo tình trạng hoạt động..."
+                  value={newPrompt}
+                  onChange={e => setNewPrompt(e.target.value)}
+                  required
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                />
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button type="submit" className="w-full" size="sm" disabled={creating}>
+                  {creating ? "Đang tạo..." : "Add Suggestion"}
+                </Button>
+              </div>
+            </form>
+          </div>
+
+          {/* Cột Phải: Scrollable List */}
+          <div className="w-full md:w-2/3 max-h-[calc(100vh-480px)] min-h-[400px] overflow-y-auto pr-2 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full">
             {suggestions.length === 0 ? (
-              <div className="text-center p-8 border border-dashed rounded-lg text-zinc-500">
+              <div className="text-center p-8 border border-dashed rounded-lg text-zinc-500 h-32 flex items-center justify-center">
                 No suggestions found. Wait for cron job or trigger it manually!
               </div>
             ) : suggestions.map((sug) => (
-              <div key={sug.id} className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+              <div key={sug.id} className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
                 <div className="space-y-1 w-full max-w-xl">
                   <div className="flex items-center gap-2">
                     <h4 className="font-semibold text-violet-600 dark:text-violet-400">{sug.title}</h4>
@@ -284,7 +287,7 @@ export default function SettingsPage() {
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 uppercase tracking-wide">Hidden</span>
                     )}
                   </div>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">{sug.prompt}</p>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 title={sug.prompt}">{sug.prompt}</p>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">

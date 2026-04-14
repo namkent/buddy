@@ -4,28 +4,70 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { dbConnection } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
-// Provider OIDC nội bộ
+// 1. Cấu hình OIDC Provider (WSO2)
 const oidcProvider = {
   id: "oidc",
-  name: process.env.OIDC_PROVIDER_NAME || "Company SSO",
+  name: process.env.OIDC_PROVIDER_NAME || "OIDC Connect",
   type: "oauth" as const,
-  wellKnown: process.env.OIDC_WELL_KNOWN,
   clientId: process.env.OIDC_CLIENT_ID,
   clientSecret: process.env.OIDC_CLIENT_SECRET,
-  authorization: { params: { scope: "openid email profile" } },
+  issuer: "https://accounts.google.com",
+  authorization: {
+    url: "https://accounts.google.com/o/oauth2/v2/auth",
+    params: { scope: "openid email profile" },
+  },
+  token: "https://oauth2.googleapis.com/token",
+  userinfo: "https://openidconnect.googleapis.com/v1/userinfo",
   idToken: true,
+  client: {
+    id_token_signed_response_alg: "RS256",
+  },
   checks: ["pkce", "state"] as ("pkce" | "state")[],
-  profile(profile: { sub: string; name: string; email: string; picture?: string }) {
+  jwks_endpoint: "https://www.googleapis.com/oauth2/v3/certs",
+  async profile(profile: any) {
     return {
       id: profile.sub,
-      name: profile.name,
+      name: profile.name || profile.given_name || profile.sub,
       email: profile.email,
       image: profile.picture,
     };
   },
+  httpOptions: { timeout: 10000 },
 };
 
-// 1. Đưa cấu hình vào biến authOptions và export nó
+const oidcProvider_sdv = {
+  id: "oidc",
+  name: process.env.OIDC_PROVIDER_NAME || "IDP SSO",
+  type: "oauth" as const,
+  clientId: process.env.OIDC_CLIENT_ID,
+  clientSecret: process.env.OIDC_CLIENT_SECRET,
+  issuer: `${process.env.OIDC_DOMAIN}/oauth2/token`,
+  authorization: {
+    url: `${process.env.OIDC_DOMAIN}/oauth2/authorize`,
+    params: { scope: "openid email profile" },
+  },
+  token: `${process.env.OIDC_DOMAIN}/oauth2/token`,
+  userinfo: `${process.env.OIDC_DOMAIN}/oauth2/userinfo`,
+  idToken: true,
+  client: {
+    id_token_signed_response_alg: "RS256",
+  },
+  checks: ["pkce", "state"] as ("pkce" | "state")[],
+  jwks_endpoint: `${process.env.OIDC_DOMAIN}/t/display.company/oauth2/jwks`,
+
+  async profile(profile: any) {
+    // Map dữ liệu thô từ WSO2 sang chuẩn NextAuth
+    return {
+      id: profile.sub,
+      name: profile.formattedName || profile.enFormattedName || profile.sub,
+      email: profile.email,
+      image: profile.picture,
+    };
+  },
+  httpOptions: { timeout: 10000 },
+};
+
+// 2. Export Auth Options
 export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
@@ -45,18 +87,14 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
         await dbConnection.initTables();
-        
-        // Credentials.username serves as Email in the UI
-        const email = credentials.username;
-        const password = credentials.password;
 
-        const dbUser = await dbConnection.users.findByEmail(email);
+        const dbUser = await dbConnection.users.findByEmail(credentials.username);
         if (dbUser && dbUser.password_hash) {
-          const isMatch = await bcrypt.compare(password, dbUser.password_hash);
+          const isMatch = await bcrypt.compare(credentials.password, dbUser.password_hash);
           if (isMatch) {
             return {
               id: dbUser.id,
-              name: dbUser.user_name,
+              name: dbUser.user_name || dbUser.name,
               email: dbUser.email,
               image: dbUser.avatar,
               role: dbUser.role,
@@ -71,36 +109,44 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, profile, user }) {
       await dbConnection.initTables();
-      
-      if (profile) {
-        let dbUser = await dbConnection.users.findByEmail(profile.email!);
+
+      // Trường hợp: Đăng nhập lần đầu (OAuth/OIDC)
+      if (profile && user) {
+        let dbUser = await dbConnection.users.findByEmail(user.email!);
+
         if (!dbUser) {
+          // Lưu vào DB - Sử dụng user.id thay vì user.sub để tránh lỗi build
           dbUser = await dbConnection.users.create({
-            id: profile.sub!,
-            name: profile.name!,
-            email: profile.email!,
-            avatar: (profile as any).picture
+            id: user.id,
+            name: user.name || (profile as any).formattedName || (profile as any).sub,
+            email: user.email!,
+            avatar: user.image || (profile as any).picture
           });
         }
+
         token.userId = dbUser.id;
         token.userName = dbUser.user_name || dbUser.name;
         token.email = dbUser.email;
         token.avatar = dbUser.avatar;
         token.role = dbUser.role || 'guest';
         token.is_banned = dbUser.is_banned;
-      } else if (user) {
+      }
+      // Trường hợp: Đăng nhập bằng Credentials (đối tượng user có sẵn từ hàm authorize)
+      else if (user) {
         token.userId = user.id;
         token.userName = user.name;
         token.email = user.email;
         token.avatar = user.image;
         token.role = (user as any).role;
         token.is_banned = (user as any).is_banned;
-      } else if (token.userId) {
-        // Reload role dynamically from DB on page refresh (F5)
+      }
+      // Trường hợp: Duy trì phiên (Refresh/F5) - Lấy lại Role/Status mới nhất từ DB
+      else if (token.userId) {
         const dbUser = await dbConnection.users.findById(token.userId as string);
         if (dbUser) {
           token.role = dbUser.role || 'guest';
           token.is_banned = dbUser.is_banned;
+          token.userName = dbUser.user_name || dbUser.name;
         }
       }
       return token;

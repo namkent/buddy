@@ -13,17 +13,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 load_dotenv(dotenv_path="../.env")
 
-# GROQ_BASE_URL dùng cho Next.js (custom base url format)
+# OPENAI_BASE_URL dùng cho Next.js (custom base url format)
 # Nhưng Groq Python SDK tự xây URL đúng từ API Key nên cần bỏ biến này ra
 # để tránh bị double prefix: /openai/v1/openai/v1/...
-os.environ.pop("GROQ_BASE_URL", None)
+os.environ.pop("OPENAI_BASE_URL", None)
 
 # ── Mem0 config dùng Groq API (qua openai provider) + Ollama Embedder ──────────
 CONFIG = {
     "llm": {
         "provider": "openai",
         "config": {
-            "api_key": os.getenv("GROQ_KEY"),
+            "api_key": os.getenv("OPENAI_KEY"),
             "model": "llama-3.1-8b-instant",   # dùng model nhẹ cho memory extraction
             "openai_base_url": "https://api.groq.com/openai/v1",
             "temperature": 0.1,
