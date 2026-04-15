@@ -171,6 +171,12 @@ export const myThreadListAdapter: RemoteThreadListAdapter = {
       return { remoteId: threadId, externalId: threadId };
     }
     const thread = await res.json();
+    // Dispatch event để đồng bộ URL → /app/{threadId}
+    window.dispatchEvent(
+      new CustomEvent("meshbuddy-thread-created", {
+        detail: { threadId: thread.id },
+      })
+    );
     return { remoteId: thread.id, externalId: thread.id };
   },
 

@@ -1,6 +1,6 @@
 "use client";
 
-import {useMemo} from "react";
+import { useMemo, useEffect } from "react";
 import {
   AssistantRuntimeProvider,
   useRemoteThreadListRuntime,
@@ -23,7 +23,11 @@ import {
 } from "@/components/assistant-ui/database-adapter";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 
-export const Assistant = () => {
+interface AssistantProps {
+  initialThreadId?: string;
+}
+
+export const Assistant = ({ initialThreadId }: AssistantProps) => {
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: () => {
       const aui = useAui();
@@ -163,6 +167,16 @@ export const Assistant = () => {
       },
     },
   });
+
+  // Lắng nghe event khi thread mới được tạo (tin nhắn đầu tiên) → cập nhật URL
+  useEffect(() => {
+    const handleThreadCreated = (e: Event) => {
+      const { threadId } = (e as CustomEvent<{ threadId: string }>).detail;
+      window.history.pushState({}, "", `/app/${threadId}`);
+    };
+    window.addEventListener("meshbuddy-thread-created", handleThreadCreated);
+    return () => window.removeEventListener("meshbuddy-thread-created", handleThreadCreated);
+  }, []);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
