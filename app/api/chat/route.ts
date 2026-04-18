@@ -78,7 +78,15 @@ export async function POST(req: Request) {
         content: Array.isArray(parsedContent)
           ? parsedContent.map((c: any) => {
             if (c.type === "text") return { type: "text", text: c.text };
-            if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+            if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
+              const imgVal = c.image || c.url;
+              if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
+                const [header, base64] = imgVal.split(",");
+                const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+                return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
+              }
+              return { type: "image", image: imgVal };
+            }
             return null;
           }).filter(Boolean)
           : String(m.content).replace(/<think>[\s\S]*?<\/think>/g, "")
@@ -94,7 +102,15 @@ export async function POST(req: Request) {
         content: Array.isArray(message.content)
           ? message.content.map((c: any) => {
             if (c.type === "text") return { type: "text", text: c.text };
-            if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+            if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
+              const imgVal = c.image || c.url;
+              if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
+                const [header, base64] = imgVal.split(",");
+                const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+                return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
+              }
+              return { type: "image", image: imgVal };
+            }
             return null;
           }).filter(Boolean)
           : message.content
@@ -107,7 +123,15 @@ export async function POST(req: Request) {
       content: Array.isArray(message.content)
         ? message.content.map((c: any) => {
           if (c.type === "text") return { type: "text", text: c.text };
-          if (process.env.ENABLE_VISION === "true" && c.type === "image") return { type: "image", image: c.image };
+          if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
+            const imgVal = c.image || c.url;
+            if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
+              const [header, base64] = imgVal.split(",");
+              const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+              return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
+            }
+            return { type: "image", image: imgVal };
+          }
           return null;
         }).filter(Boolean)
         : message.content
@@ -144,8 +168,10 @@ export async function POST(req: Request) {
   );
 
   const selectedModel = hasImage
-    ? "llama-3.2-90b-vision-preview"
+    ? (process.env.VISION_MODEL || process.env.OPENAI_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct")
     : (process.env.OPENAI_MODEL || "llama-3.3-70b-versatile");
+
+  console.log(`[Chat] Model: ${selectedModel}, HasImage: ${hasImage}`);
 
   // Lấy cấu hình hệ thống
   const [dbSystemPrompt, rawEnableTranslate, rawEnableRag] = await Promise.all([
@@ -161,14 +187,17 @@ export async function POST(req: Request) {
   // --- XỬ LÝ SLASH COMMANDS ---
   if (typeof cleanMessageContent === "string") {
     const trimmedContent = cleanMessageContent.trim();
-    if (trimmedContent === "/summarize" || trimmedContent === "[Summarize]") {
-      isSlashCommand = true;
-      resolvedSystemPrompt = "Bạn là trợ lý AI súc tích. Nhiệm vụ DUY NHẤT của bạn hiện tại là TÓM TẮT toàn bộ nội dung cuộc trò chuyện ở trên một cách rõ ràng và ngắn gọn nhất bằng các gạch đầu dòng. KHÔNG tự đưa ra câu trả lời mới, chỉ TÓM TẮT.";
-    }
-    else if (trimmedContent.startsWith("/search ") || trimmedContent.startsWith("[Search] ")) {
+    if (system) resolvedSystemPrompt = system; // Ưu tiên system prompt từ client nếu có
+
+    if (trimmedContent.startsWith("/search ") || trimmedContent.startsWith("[Search] ")) {
       isSlashCommand = true;
       const query = trimmedContent.replace(/^(\/search|\[Search\])\s+/i, '').trim();
       
+      // Xác định host và origin động để tạo URL tuyệt đối cho ảnh
+      const host = req.headers.get("host");
+      const protocol = req.headers.get("x-forwarded-proto") || "http";
+      const origin = `${protocol}://${host}`;
+
       // Perform RAG search to python service
       let ragContext = "Không có kết quả nào.";
       try {
@@ -184,9 +213,10 @@ export async function POST(req: Request) {
             ragContext = data.results.map((r: any, idx: number) => {
               let chunkStr = `[Tài liệu ${idx + 1}]:\n${r.text}`;
               if (r.image_url) {
+                // Tạo URL tuyệt đối để AI không bị "ảo giác" tự điền domain example.com
                 const fullImageUrl = r.image_url.startsWith('http') 
                   ? r.image_url 
-                  : `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${r.image_url}`;
+                  : `${origin}${process.env.NEXT_PUBLIC_FILE_SERVER_URL || ""}${r.image_url}`;
                 // Return markdown image
                 chunkStr += `\nHình ảnh đính kèm: ![image](${fullImageUrl})`;
               }
@@ -257,6 +287,29 @@ QUY TẮC PHẢN HỒI (BẮT BUỘC):
   const finalSystemPrompt = isSlashCommand
     ? resolvedSystemPrompt
     : `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`;
+  
+  // --- PRUNING IMAGES (MAX N) ---
+  // Limits total images sent in history to avoid API limits (e.g. Groq 5 images)
+  const maxVisionImagesStr = process.env.MAX_VISION_IMAGES;
+  const maxVisionImages = maxVisionImagesStr ? parseInt(maxVisionImagesStr, 10) : 0;
+  
+  if (maxVisionImages > 0) {
+    let imgCount = 0;
+    for (let i = apiMessages.length - 1; i >= 0; i--) {
+      const msg = apiMessages[i];
+      if (Array.isArray(msg.content)) {
+        msg.content = msg.content.map((c: any) => {
+          if (c.type === "image") {
+            imgCount++;
+            if (imgCount > maxVisionImages) {
+              return { type: "text", text: "[Ảnh cũ đã được lược bỏ để tiết kiệm bộ nhớ]" };
+            }
+          }
+          return c;
+        });
+      }
+    }
+  }
 
   const result = streamText({
     model: openai.chat(selectedModel),

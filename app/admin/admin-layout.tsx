@@ -53,7 +53,7 @@ export default function AdminLayoutContent({ children }: { children: React.React
           <Link href="/admin/logs">
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${pathname === "/admin/logs" ? "bg-white dark:bg-white/10 text-violet-600 dark:text-white shadow-sm" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/5"} ${collapsed ? "justify-center px-0" : ""}`}>
               <ScrollText className="size-5 shrink-0" />
-              {!collapsed && <span className="font-medium text-base whitespace-nowrap">System Logs</span>}
+              {!collapsed && <span className="font-medium text-base whitespace-nowrap">Logs</span>}
             </div>
           </Link>
         </nav>

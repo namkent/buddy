@@ -70,18 +70,26 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
 
                 let contentParts: any[] = [];
                 let fullText = String(m.content || "");
+                // Lọc bỏ các thẻ kỹ thuật khỏi lịch sử hiển thị
+                fullText = fullText.replace(/^\[(Search|Summarize|Translate .*?)\][:\s]*/i, "");
+                
                 let isJsonArray = false;
-
+                const attachments: any[] = [];
                 try {
                   const parsed = JSON.parse(fullText);
                   if (Array.isArray(parsed)) {
-                    contentParts = parsed.map(c => {
-                      // Parse <think> tags if this is a text part
-                      if (c.type === "text" && c.text.includes("<think>")) {
-                         // We could split <think> here, but assistant-ui renders reasoning parts separately
-                         // Let's just keep it simple: if JSON, assume text is raw or clean.
+                    contentParts = parsed.filter(c => {
+                      if (c.type === "image") {
+                        attachments.push({
+                          id: Math.random().toString(36).substring(7),
+                          type: "image",
+                          name: "", // Không hiển thị tên file khi load lại từ DB
+                          content: [{ type: "image", image: c.image }],
+                          status: { type: "complete" }
+                        });
+                        return false;
                       }
-                      return c;
+                      return true;
                     });
                     isJsonArray = true;
                   }
@@ -129,7 +137,7 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
                         unstable_state: null
                       }
                     } : {
-                      attachments: [],
+                      attachments: attachments,
                       metadata: {
                         custom: {}
                       }

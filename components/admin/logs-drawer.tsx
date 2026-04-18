@@ -97,7 +97,7 @@ export function AdminLogsDrawer({ open, onOpenChange, logId, initialLog }: Admin
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               {log && getLevelIcon(log.level)}
-              <SheetTitle className="text-sm font-bold">System Log Details</SheetTitle>
+              <SheetTitle className="font-bold">SYSTEM LOG DETAILS</SheetTitle>
             </div>
             {log && getLevelBadge(log.level)}
           </div>
@@ -151,7 +151,7 @@ export function AdminLogsDrawer({ open, onOpenChange, logId, initialLog }: Admin
               {log.details && (
                 <div className="space-y-2">
                   <span className="text-sm font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
-                    <FileJson className="size-3" /> TECHNICAL DETAILS (STACK/PARAMS)
+                    <FileJson className="size-3" /> DETAILS
                   </span>
                   <div className="w-full min-w-0 grid grid-cols-1 overflow-hidden border border-zinc-200 dark:border-zinc-800 rounded-md bg-muted/30 shadow-sm">
                     <div className="aui-code-header-root flex items-center justify-between px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-muted/50 text-[10px] font-bold text-zinc-400 uppercase tracking-widest leading-none">

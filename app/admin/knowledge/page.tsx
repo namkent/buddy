@@ -173,6 +173,15 @@ export default function KnowledgeBasePage() {
     } catch { toast.error("Failed to delete category"); }
   };
 
+  // Helper function to format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   const handleUpload = async () => {
     if (!selectedFile || !selectedGroupId) return;
     setUploading(true);
@@ -494,7 +503,7 @@ export default function KnowledgeBasePage() {
                 <DialogTitle>Upload to [{selectedGroup?.name}]</DialogTitle>
                 <DialogDescription>Select a PDF, Word or Text file to upload to this category.</DialogDescription>
               </DialogHeader>
-              <div className="py-8 text-center">
+              <div className="py-8 text-center overflow-hidden">
                 {!selectedFile ? (
                   <label className="flex flex-col items-center justify-center border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-950 transition-all group">
                     <Plus className="size-10 text-zinc-300 group-hover:text-violet-500 mb-2" />
@@ -502,13 +511,22 @@ export default function KnowledgeBasePage() {
                     <input type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
                   </label>
                 ) : (
-                  <div className="p-4 bg-zinc-50 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 text-left flex items-center gap-3">
-                    <FileText className="size-8 text-violet-500" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{selectedFile.name}</p>
-                      <p className="text-xs text-zinc-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                  <div className="p-4 bg-zinc-50 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 text-left flex items-center gap-3 overflow-hidden">
+                    <div className="bg-violet-500/10 p-2 rounded-lg shrink-0">
+                      <FileText className="size-6 text-violet-500" />
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedFile(null)}><XCircle className="size-4" /></Button>
+                    <div className="flex-1 min-w-0 pr-2">
+                      <p className="font-semibold text-sm truncate w-full" title={selectedFile.name}>{selectedFile.name}</p>
+                      <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight mt-0.5">{formatFileSize(selectedFile.size)}</p>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="size-8 rounded-full hover:bg-red-500/10 hover:text-red-500 shrink-0" 
+                      onClick={() => setSelectedFile(null)}
+                    >
+                      <XCircle className="size-4" />
+                    </Button>
                   </div>
                 )}
               </div>

@@ -40,13 +40,16 @@ import {
   SquareIcon,
   ThumbsUpIcon,
   ThumbsDownIcon,
-  GlobeIcon,
-  FileTextIcon,
   LanguagesIcon,
-  SlashIcon,
-  CommandIcon,
-  ArrowLeft
+  Library,
+  X,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { FC } from "react";
 
 export const Thread: FC = () => {
@@ -158,155 +161,28 @@ const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
 const Composer: FC = () => {
   const runtime = useAssistantRuntime();
 
-  const [features, setFeatures] = useState({ summarize: true, search: true, translate: true });
+  const [chatMode, setChatMode] = useState<"normal" | "search" | "translate">("normal");
+  const [targetLang, setTargetLang] = useState<{ id: string, name: string, emoji: string }>({ id: "en", name: "English", emoji: "🇺🇸" });
 
-  useEffect(() => {
-    fetch("/api/chat/config")
-      .then(r => r.json())
-      .then(d => {
-        if (d.features) setFeatures(d.features);
-      })
-      .catch(console.error);
-  }, []);
+  const resetMode = () => setChatMode("normal");
 
-  const slashAdapter = useMemo(() => {
-    const categoriesList: {id: string, label: string}[] = [];
-    if (features.search || features.summarize) categoriesList.push({ id: "actions", label: "Actions" });
-    if (features.translate) categoriesList.push({ id: "translate", label: "Translate" });
-    const langs = [
-      { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
-      { id: "ko", name: "Korean", emoji: "🇰🇷" },
-      { id: "en", name: "English", emoji: "🇺🇸" },
-      { id: "zh", name: "Chinese", emoji: "🇨🇳" },
-      { id: "ja", name: "Japanese", emoji: "🇯🇵" },
-      { id: "fr", name: "French", emoji: "🇫🇷" },
-      { id: "de", name: "German", emoji: "🇩🇪" },
-      { id: "es", name: "Spanish", emoji: "🇪🇸" },
-      { id: "ru", name: "Russian", emoji: "🇷🇺" },
-      { id: "th", name: "Thai", emoji: "🇹🇭" }
-    ];
-    const actionsItems: any[] = [];
-    if (features.summarize) {
-      actionsItems.push({ id: "summarize", type: "command", label: "Summarize", description: "Summarize the chat content" });
-    }
-    if (features.search) {
-      actionsItems.push({ id: "search", type: "command", label: "Search", description: "Search in knowledge base (RAG)" });
-    }
+  const handleSend = () => {
+    const text = runtime.thread.composer.getState().text.trim();
+    if (!text) return;
 
-    const translateItems = features.translate ? langs.map(l => ({
-      id: `translate_${l.id}`, type: "command", label: l.name, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
-    })) : [];
+    let finalContent = text;
+    if (chatMode === "search") finalContent = `[Search] ${text}`;
+    else if (chatMode === "translate") finalContent = `[Translate ${targetLang.name}]:\n${text}`;
 
-    const allSearchItems = [
-      ...actionsItems,
-      ...(features.translate ? langs.map(l => ({
-        id: `translate_${l.id}`, type: "command", label: `Translate to ${l.name}`, description: `Translate text to ${l.name}`, emoji: l.emoji, langName: l.name
-      })) : [])
-    ];
-
-    return {
-      categories() {
-        return categoriesList;
-      },
-      categoryItems(categoryId: string) {
-        if (categoryId === "actions") return actionsItems;
-        if (categoryId === "translate") return translateItems;
-        return [];
-      },
-      search(query: string) {
-        const lower = query.trim().toLowerCase();
-        if (!lower) return [];
-
-        return allSearchItems.filter((i: any) => 
-          i.label.toLowerCase().includes(lower) || i.description?.toLowerCase().includes(lower)
-        );
-      }
-    };
-  }, [features]);
-
-  const handleSlashSelect = (item: any) => {
-    // Xử lý lệnh thực tế
-    if (item.id === "summarize") {
-      runtime.thread.append({ role: "user", content: [{ type: "text", text: "[Summarize]" }] });
-    } else if (item.id === "search") {
-      runtime.thread.composer.setText("[Search] ");
-    } else if (item.id.startsWith("translate_")) {
-      const targetLang = item.langName || item.label.replace("Translate to ", "");
-      runtime.thread.composer.setText(`[Translate ${targetLang}]:\n`);
-    }
+    runtime.thread.append({
+      role: "user",
+      content: [{ type: "text", text: finalContent }]
+    });
+    runtime.thread.composer.setText("");
   };
 
   return (
-    <ComposerPrimitive.Unstable_SlashCommandRoot adapter={slashAdapter as any} onSelect={handleSlashSelect}>
-      <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-        {/* === POPUP SLASH COMMANDS === */}
-        <ComposerPrimitive.Unstable_TriggerPopoverPopover className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg animate-in slide-in-from-bottom-2">
-          
-          <ComposerPrimitive.Unstable_TriggerPopoverBack className="w-full flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold outline-none transition-colors hover:bg-accent focus:bg-accent border-b text-muted-foreground">
-            <ArrowLeft className="size-3.5" />
-            Back
-          </ComposerPrimitive.Unstable_TriggerPopoverBack>
-
-          <ComposerPrimitive.Unstable_TriggerPopoverCategories>
-            {(categories) => (
-              <div aria-orientation="vertical" className={categories.length > 0 ? "flex flex-col p-1 border-b" : "hidden"}>
-                {categories.map((cat) => {
-                  let CatIcon = CommandIcon;
-                  if (cat.id === "translate") CatIcon = LanguagesIcon;
-                  return (
-                    <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
-                      key={cat.id}
-                      categoryId={cat.id}
-                      className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-primary text-zinc-700 dark:text-zinc-300"
-                    >
-                      <CatIcon className="size-3.5" />
-                      {cat.label}
-                    </ComposerPrimitive.Unstable_TriggerPopoverCategoryItem>
-                  );
-                })}
-              </div>
-            )}
-          </ComposerPrimitive.Unstable_TriggerPopoverCategories>
-
-          <ComposerPrimitive.Unstable_TriggerPopoverItems>
-            {(items) => (
-              <div className={items.length > 0 ? "py-1 max-h-64 overflow-y-auto scrollbar-thin" : "hidden"}>
-                {items.map((item: any, index) => {
-                  let IconComp = SlashIcon;
-                  if (item.id === "search") IconComp = GlobeIcon;
-                  else if (item.id === "summarize") IconComp = FileTextIcon;
-                  else if (item.id === "back") IconComp = ArrowLeft;
-                  else if (item.id === "category_actions") IconComp = CommandIcon;
-                  else if (item.id === "category_translate" || item.id.startsWith("translate_")) IconComp = LanguagesIcon;
-
-                  return (
-                    <ComposerPrimitive.Unstable_TriggerPopoverItem
-                      key={item.id}
-                      item={item}
-                      index={index}
-                      className="flex w-full cursor-pointer flex-col items-start gap-0.5 px-3 py-2 text-left outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent"
-                    >
-                      <span className="flex items-center gap-2 font-medium text-sm text-foreground">
-                        {item.emoji ? (
-                          <span className="text-base leading-none w-3.5 flex items-center justify-center mr-0.5">{item.emoji}</span>
-                        ) : (
-                          <IconComp className="size-3.5 text-primary" />
-                        )}
-                        {item.label}
-                      </span>
-                      {item.description && (
-                        <span className="ml-5.5 text-muted-foreground text-[11px] leading-tight max-w-[90%] break-words">
-                          {item.description}
-                        </span>
-                      )}
-                    </ComposerPrimitive.Unstable_TriggerPopoverItem>
-                  );
-                })}
-              </div>
-            )}
-          </ComposerPrimitive.Unstable_TriggerPopoverItems>
-        </ComposerPrimitive.Unstable_TriggerPopoverPopover>
-
+    <ComposerPrimitive.Root className="aui-composer-root flex w-full flex-col gap-2">
         {/* === COMPOSER DROPZONE === */}
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div
@@ -314,39 +190,131 @@ const Composer: FC = () => {
             className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
           >
             <ComposerAttachments />
+
+            {/* === MODE INDICATOR === */}
+            {chatMode !== "normal" && (
+              <div className="flex items-center gap-2 px-2 py-1 mx-1 mt-1 bg-violet-500/5 border border-violet-500/20 rounded-lg w-fit animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 uppercase tracking-widest">
+                  {chatMode === "search" && <Library className="size-3" />}
+                  {chatMode === "translate" && <LanguagesIcon className="size-3" />}
+                  <span>{chatMode}</span>
+                  {chatMode === "translate" && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex items-center gap-1 ml-1 pl-2 border-l border-violet-500/30 hover:text-violet-600 transition-colors uppercase">
+                          {targetLang.emoji} {targetLang.name}
+                          <ChevronRightIcon className="size-2.5 rotate-90" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-40">
+                        {[
+                          { id: "en", name: "English", emoji: "🇺🇸" },
+                          { id: "ko", name: "Korean", emoji: "🇰🇷" },
+                          { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
+                          { id: "zh", name: "Chinese", emoji: "🇨🇳" },
+                          { id: "ja", name: "Japanese", emoji: "🇯🇵" },
+                          { id: "th", name: "Thai", emoji: "🇹🇭" }
+                        ].map((l) => (
+                          <DropdownMenuItem
+                            key={l.id}
+                            onClick={() => setTargetLang(l)}
+                            className="flex items-center gap-2 text-xs"
+                          >
+                            <span>{l.emoji}</span>
+                            <span>{l.name}</span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+                <button onClick={resetMode} className="ml-1 p-0.5 hover:bg-red-500/10 rounded-full transition-colors text-zinc-400 hover:text-red-500">
+                  <X className="size-3" />
+                </button>
+              </div>
+            )}
+
             <ComposerPrimitive.Input
-              placeholder="Ask anything or type / for commands..."
+              placeholder="Ask anything..."
               className="aui-composer-input max-h-[40vh] overflow-y-auto min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80 focus:outline-none scrollbar-thin"
               rows={1}
               autoFocus
               aria-label="Message input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
             />
-            <ComposerAction />
+            <ComposerAction
+              onModeSelect={(m, l) => {
+                setChatMode(m);
+                if (l) setTargetLang(l);
+              }}
+              onSend={handleSend}
+              chatMode={chatMode}
+              resetMode={resetMode}
+            />
           </div>
         </ComposerPrimitive.AttachmentDropzone>
       </ComposerPrimitive.Root>
-    </ComposerPrimitive.Unstable_SlashCommandRoot>
   );
 };
 
-const ComposerAction: FC = () => {
+const ComposerAction: FC<{
+  onModeSelect: (m: any, l?: any) => void,
+  onSend: () => void,
+  chatMode: string,
+  resetMode: () => void
+}> = ({ onModeSelect, onSend, chatMode, resetMode }) => {
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
-      <ComposerAddAttachment />
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
+      <div className="flex items-center gap-1">
+        <ComposerAddAttachment />
+
+        <div className="w-px h-4 bg-border mx-1" />
+
+        <TooltipIconButton
+          tooltip="Internal Search (RAG)"
+          onClick={() => onModeSelect("search")}
+          className={cn("size-8 rounded-full transition-all", chatMode === "search" ? "bg-violet-500 text-white hover:bg-violet-600" : "text-muted-foreground hover:bg-muted")}
+        >
+          <Library className="size-4" />
+        </TooltipIconButton>
+
+        <TooltipIconButton
+          tooltip="Translate Mode"
+          onClick={() => onModeSelect("translate")}
+          className={cn("size-8 rounded-full transition-all", chatMode === "translate" ? "bg-violet-500 text-white hover:bg-violet-600" : "text-muted-foreground hover:bg-muted")}
+        >
+          <LanguagesIcon className="size-4" />
+        </TooltipIconButton>
+
+        {chatMode !== "normal" && (
           <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
+            tooltip="Reset to Normal Chat"
+            onClick={resetMode}
+            className="size-8 rounded-full text-zinc-400 hover:text-red-500 hover:bg-red-500/5 transition-all"
           >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            <RefreshCwIcon className="size-3.5" />
           </TooltipIconButton>
-        </ComposerPrimitive.Send>
+        )}
+      </div>
+
+      <AuiIf condition={(s) => !s.thread.isRunning}>
+        <TooltipIconButton
+          tooltip="Send message"
+          side="bottom"
+          type="button"
+          variant="default"
+          size="icon"
+          onClick={onSend}
+          className="aui-composer-send size-8 rounded-full"
+          aria-label="Send message"
+        >
+          <ArrowUpIcon className="aui-composer-send-icon size-4" />
+        </TooltipIconButton>
       </AuiIf>
       <AuiIf condition={(s) => s.thread.isRunning}>
         <ComposerPrimitive.Cancel asChild>
@@ -484,7 +452,16 @@ const UserMessage: FC = () => {
 
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="aui-user-message-content wrap-break-word peer rounded-2xl bg-muted px-4 py-2.5 text-foreground empty:hidden">
-          <MessagePrimitive.Parts />
+          <MessagePrimitive.Parts>
+            {({ part }) => {
+              if (part.type === "text") {
+                // Lọc bỏ các thẻ kỹ thuật như [Search], [Translate...], [Summarize] khỏi giao diện người dùng
+                const cleanText = part.text.replace(/^\[(Search|Summarize|Translate .*?)\][:\s]*/i, "");
+                return <span className="whitespace-pre-wrap">{cleanText}</span>;
+              }
+              return null;
+            }}
+          </MessagePrimitive.Parts>
         </div>
         <div className="aui-user-action-bar-wrapper absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 pr-2 peer-empty:hidden">
           <UserActionBar />

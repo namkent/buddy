@@ -7,6 +7,87 @@ import {
 } from "@assistant-ui/react";
 import { createAssistantStream } from "assistant-stream";
 
+const compressImage = (file: File, maxWidth = 1024, quality = 0.8): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxWidth) {
+            width = Math.round((width * maxWidth) / height);
+            height = maxWidth;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+    };
+    reader.onerror = reject;
+  });
+};
+
+const processMessageAttachments = async (message: any) => {
+  if (message.role !== "user") return message.content;
+  
+  const attachments = (message as any).attachments || [];
+  if (attachments.length === 0) return message.content;
+
+  const attachmentParts = await Promise.all(
+    attachments.map(async (attachment: any) => {
+      if (attachment.type === "image" && attachment.file) {
+        try {
+          const base64 = await compressImage(attachment.file);
+          return { type: "image", image: base64 };
+        } catch (e) {
+          console.error("Image conversion failed", e);
+          return null;
+        }
+      }
+      if (attachment.type === "document" && attachment.file) {
+        if (attachment.file.name.endsWith(".txt")) {
+          try {
+            const text = await attachment.file.text();
+            return { type: "text", text: `[Attached File: ${attachment.file.name}]\n${text}` };
+          } catch (e) {
+            console.error("Text file read failed", e);
+          }
+        } else {
+          return { type: "text", text: `[Attached File: ${attachment.file.name}]` };
+        }
+      }
+      return null;
+    })
+  );
+
+  const validParts = attachmentParts.filter(Boolean);
+  let processedContent = message.content;
+  if (validParts.length > 0) {
+    if (typeof processedContent === "string") {
+      processedContent = [{ type: "text", text: processedContent }, ...validParts];
+    } else if (Array.isArray(processedContent)) {
+      processedContent = [...processedContent, ...validParts];
+    }
+  }
+  return processedContent;
+};
+
 export const createChatModelAdapter = (getThreadId: () => string | undefined): ChatModelAdapter => ({
   async *run({ messages, abortSignal }) {
     const threadId = getThreadId();
@@ -56,10 +137,19 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
       }, 500);
     }
 
+    // Get current message with attachments
+    const processedContent = await processMessageAttachments(lastMessage);
+
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: lastMessage, threadId }),
+      body: JSON.stringify({ 
+        message: { 
+          ...lastMessage, 
+          content: processedContent 
+        }, 
+        threadId 
+      }),
       signal: abortSignal,
     });
 
@@ -272,10 +362,16 @@ export const createHistoryAdapter = (remoteId?: string): ThreadHistoryAdapter =>
   async append(rawMessage: any) {
     if (!remoteId) return;
     const message = 'message' in rawMessage ? rawMessage.message : rawMessage;
+    const processedContent = await processMessageAttachments(message);
+
     await fetch("/api/chat/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...message, thread_id: remoteId }),
+      body: JSON.stringify({ 
+        ...message, 
+        content: processedContent,
+        thread_id: remoteId 
+      }),
     });
   },
 });
