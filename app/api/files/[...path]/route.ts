@@ -19,11 +19,11 @@ export async function GET(
     const { path: pathSegments } = await params;
     
     // 2. Lấy đường dẫn gốc (Root) của storage từ biến môi trường
-    const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
+    const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(/*turbopackIgnore: true*/ process.cwd(), 'external_storage');
     
     // 3. Xây dựng đường dẫn vật lý an toàn và chuẩn hóa
-    const relativePath = path.join(...pathSegments);
-    const safePhysicalPath = path.normalize(path.join(storageRoot, relativePath));
+    const relativePath = path.join(/*turbopackIgnore: true*/ ...pathSegments);
+    const safePhysicalPath = path.normalize(path.join(/*turbopackIgnore: true*/ storageRoot, relativePath));
 
     // 4. Bảo mật: Chống tấn công Directory Traversal (Đảm bảo file nằm trong thư mục gốc cho phép)
     if (!safePhysicalPath.startsWith(path.normalize(storageRoot))) {

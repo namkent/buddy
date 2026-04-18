@@ -56,7 +56,7 @@ const DiagramModal: FC<{ svgHtml: string; onClose: () => void }> = ({ svgHtml, o
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      setScale(prev => Math.min(Math.max(prev - e.deltaY * 0.002, 0.5), 10));
+      setScale(prev => Math.min(Math.max(prev - e.deltaY * 0.001, 0.5), 10));
     };
 
     el.addEventListener("wheel", handleWheel, { passive: false });

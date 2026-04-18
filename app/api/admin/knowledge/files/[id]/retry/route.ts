@@ -26,9 +26,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await dbConnection.knowledge.updateFileStatus(fileId, 'pending', null);
 
     // 3. Reconstruct absolute path
-    const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
+    const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(/*turbopackIgnore: true*/ process.cwd(), 'external_storage');
     // file_path trong DB có dạng /group_1/file_5/origin/hash.pdf
-    const physicalPath = path.join(storageRoot, file.file_path);
+    const physicalPath = path.join(/*turbopackIgnore: true*/ storageRoot, file.file_path);
 
     // 4. Gọi Python xử lý
     const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";

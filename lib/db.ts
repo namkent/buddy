@@ -93,6 +93,7 @@ export const dbConnection = {
         name TEXT NOT NULL,
         description TEXT,
         active BOOLEAN DEFAULT TRUE,
+        sort_order INTEGER DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -104,6 +105,7 @@ export const dbConnection = {
         active BOOLEAN DEFAULT TRUE,
         status TEXT DEFAULT 'pending',
         error_message TEXT,
+        file_size BIGINT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -143,6 +145,9 @@ export const dbConnection = {
       await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS error_message TEXT');
       await pool.query('ALTER TABLE knowledge_groups ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE');
       await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE');
+      await pool.query('ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS feedback INTEGER');
+      await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS file_size BIGINT');
+      await pool.query('ALTER TABLE knowledge_groups ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0');
     } catch(e) {}
   },
 
@@ -214,7 +219,7 @@ export const dbConnection = {
         WHERE m.role = 'user'
         GROUP BY u.id, u.user_name, u.email, u.avatar
         ORDER BY msg_count DESC
-        LIMIT 10
+        LIMIT 5
       `);
 
       // Messages per day for last 7 days. Uses date truncation with created_at.
@@ -231,13 +236,30 @@ export const dbConnection = {
         ORDER BY day_date ASC
       `);
 
+      // Feedback stats
+      const posFeedbackRes = await pool.query('SELECT COUNT(*) FROM chat_messages WHERE feedback = 1');
+      const negFeedbackRes = await pool.query('SELECT COUNT(*) FROM chat_messages WHERE feedback = -1');
+
+      // Recent feedbacks (latest 10 - for scrolling)
+      const recentFeedbacksRes = await pool.query(`
+        SELECT m.id, m.content, m.feedback, m.created_at, u.user_name, u.email
+        FROM chat_messages m
+        JOIN users u ON m.user_id = u.id
+        WHERE m.feedback != 0
+        ORDER BY m.created_at DESC
+        LIMIT 10
+      `);
+
       return {
         usersCount: parseInt(usersRes.rows[0].count),
         threadsCount: parseInt(threadsRes.rows[0].count),
         messagesCount: parseInt(messagesRes.rows[0].count),
         onlineCount: parseInt(onlineRes.rows[0].count),
+        posFeedbackCount: parseInt(posFeedbackRes.rows[0].count),
+        negFeedbackCount: parseInt(negFeedbackRes.rows[0].count),
         topUsers: topUsersRes.rows,
         weeklyMessages: weeklyRes.rows,
+        recentFeedbacks: recentFeedbacksRes.rows,
       };
     }
   },
@@ -299,6 +321,20 @@ export const dbConnection = {
         console.error("DB Message Error:", error);
       }
     },
+    async updateFeedback(messageId: string, feedback: number): Promise<void> {
+      await pool.query('UPDATE chat_messages SET feedback = $1 WHERE id = $2', [feedback, messageId]);
+    },
+    async getFeedbacks(limit: number = 20) {
+      const res = await pool.query(`
+        SELECT m.*, u.user_name, u.email
+        FROM chat_messages m
+        LEFT JOIN users u ON m.user_id = u.id
+        WHERE m.feedback != 0
+        ORDER BY m.created_at DESC
+        LIMIT $1
+      `, [limit]);
+      return res.rows;
+    }
   },
 
   settings: {
@@ -363,7 +399,7 @@ export const dbConnection = {
     },
     async getGroups(onlyActive: boolean = false) {
       const where = onlyActive ? 'WHERE active = TRUE' : '';
-      const res = await pool.query(`SELECT * FROM knowledge_groups ${where} ORDER BY created_at DESC`);
+      const res = await pool.query(`SELECT * FROM knowledge_groups ${where} ORDER BY sort_order ASC, created_at DESC`);
       return res.rows;
     },
     async getGroupsWithCount(onlyActive: boolean = false) {
@@ -374,7 +410,7 @@ export const dbConnection = {
         LEFT JOIN knowledge_files f ON f.group_id = g.id
         ${where}
         GROUP BY g.id
-        ORDER BY g.created_at DESC
+        ORDER BY g.sort_order ASC, g.created_at DESC
       `);
       return res.rows;
     },
@@ -401,10 +437,25 @@ export const dbConnection = {
       values.push(id);
       await pool.query(`UPDATE knowledge_groups SET ${fields.join(', ')} WHERE id = $${i}`, values);
     },
-    async addFile(group_id: number, file_name: string, file_path: string) {
+    async reorderGroups(orders: { id: number; sort_order: number }[]) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const entry of orders) {
+          await client.query('UPDATE knowledge_groups SET sort_order = $1 WHERE id = $2', [entry.sort_order, entry.id]);
+        }
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    },
+    async addFile(group_id: number, file_name: string, file_path: string, file_size?: number) {
       const res = await pool.query(
-        'INSERT INTO knowledge_files (group_id, file_name, file_path) VALUES ($1, $2, $3) RETURNING *',
-        [group_id, file_name, file_path]
+        'INSERT INTO knowledge_files (group_id, file_name, file_path, file_size) VALUES ($1, $2, $3, $4) RETURNING *',
+        [group_id, file_name, file_path, file_size || 0]
       );
       return res.rows[0];
     },

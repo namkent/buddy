@@ -7,8 +7,9 @@ import {
   FileText, UploadCloud, XCircle, Clock, CheckCircle2,
   Calendar, Search, Filter, Info, Mail, AlertCircle,
   FileCode, FileJson, FileType, FileSignature, FileArchive, Edit2,
-  RefreshCw, Eye, EyeOff
+  RefreshCw, Eye, EyeOff, GripVertical
 } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { AdminLogsDrawer } from "@/components/admin/logs-drawer";
@@ -78,6 +79,7 @@ export default function KnowledgeBasePage() {
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [retryingFileId, setRetryingFileId] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const selectedGroupRef = useRef<number | null>(null);
@@ -87,6 +89,7 @@ export default function KnowledgeBasePage() {
   }, [selectedGroupId]);
 
   useEffect(() => {
+    setIsMounted(true);
     fetchGroups();
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, []);
@@ -114,6 +117,31 @@ export default function KnowledgeBasePage() {
       }
     } catch { toast.error("Failed to load categories"); }
     finally { setLoadingGroups(false); }
+  };
+
+  const onDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+    const items = Array.from(groups);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+    
+    setGroups(items);
+    
+    // Chuẩn bị dữ liệu cập nhật sort_order dựa trên index mới
+    const orders = items.map((item, index) => ({ id: item.id, sort_order: index }));
+    
+    try {
+      const res = await fetch("/api/admin/knowledge/groups/reorder", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Order updated");
+    } catch {
+      toast.error("Failed to save order");
+      fetchGroups(); // Revert
+    }
   };
 
   const fetchFiles = async (groupId: number) => {
@@ -588,73 +616,112 @@ export default function KnowledgeBasePage() {
             <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-600 border-none text-[12px] h-6 pl-4 pr-4 font-bold">{groups.length}</Badge>
           </div>
           <div className="flex-1 overflow-auto custom-scrollbar">
-            <Table>
-              <TableBody>
-                {loadingGroups ? (
-                  <TableRow><TableCell className="text-center py-10 text-xs text-zinc-500">Loading...</TableCell></TableRow>
-                ) : groups.map(group => (
-                  <TableRow
-                    key={group.id}
-                    onClick={() => setSelectedGroupId(group.id)}
-                    className={cn(
-                      "cursor-pointer transition-colors group",
-                      Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500/5 dark:bg-indigo-500/10" : "hover:bg-zinc-50 dark:hover:bg-white/5"
+            {!isMounted ? (
+              <Table>
+                <TableBody>
+                  {groups.map(group => (
+                    <TableRow key={group.id} className="hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer">
+                      <TableCell className="py-3 px-4">
+                        <div className="flex items-center gap-7 pl-6">
+                           <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                             <FolderOpen className="size-4" />
+                           </div>
+                           <div className="flex-1"><span className="font-semibold text-sm">{group.name}</span></div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <DragDropContext onDragEnd={onDragEnd}>
+                <Table>
+                  <Droppable droppableId="groups">
+                    {(provided) => (
+                      <TableBody {...provided.droppableProps} ref={provided.innerRef}>
+                        {loadingGroups ? (
+                          <TableRow><TableCell className="text-center py-10 text-xs text-zinc-500">Loading...</TableCell></TableRow>
+                        ) : groups.map((group, index) => (
+                          <Draggable key={group.id} draggableId={group.id.toString()} index={index}>
+                            {(provided, snapshot) => (
+                              <TableRow
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                onClick={() => setSelectedGroupId(group.id)}
+                                className={cn(
+                                  "cursor-pointer transition-colors group",
+                                  Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500/5 dark:bg-indigo-500/10" : "hover:bg-zinc-50 dark:hover:bg-white/5",
+                                  snapshot.isDragging && "bg-zinc-100 dark:bg-zinc-800 shadow-lg opacity-80"
+                                )}
+                              >
+                                <TableCell
+                                  className={cn(
+                                    "py-3 px-4 transition-all",
+                                    Number(selectedGroupId) === Number(group.id) && "shadow-[inset_3px_0_0_0_#8b5cf6]"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {/* Drag Handle */}
+                                    <div {...provided.dragHandleProps} className="text-zinc-300 hover:text-zinc-500 cursor-grab active:cursor-grabbing p-1">
+                                      <GripVertical className="size-4" />
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                      <div className={cn("p-2 rounded-lg transition-colors flex items-center justify-center shrink-0", Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500 text-white" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500")}>
+                                        <FolderOpen className={cn("size-4", !group.active && "opacity-40")} />
+                                      </div>
+                                      <div className="min-w-0 flex-1 flex flex-col justify-center">
+                                        <div className="flex items-center gap-2">
+                                          <span className={cn("font-semibold text-sm truncate", !group.active && "text-zinc-400")}>{group.name}</span>
+                                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border-none shrink-0">
+                                            {group.file_count || 0}
+                                          </Badge>
+                                        </div>
+                                        <p className={cn("text-xs truncate mt-0.5 font-normal leading-tight", group.active ? "text-zinc-400" : "text-zinc-300")}>{group.description || "No description"}</p>
+                                      </div>
+                                      <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
+                                        <div className="flex items-center px-1">
+                                          <Switch
+                                            checked={group.active}
+                                            onCheckedChange={(val) => handleUpdateGroup(group.id, val)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="scale-75 data-[state=checked]:bg-indigo-500"
+                                          />
+                                        </div>
+                                        <Button
+                                          variant="ghost" size="icon"
+                                          className="size-7 text-zinc-400 hover:text-indigo-500"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingGroup(group);
+                                            setRenamingGroupName(group.name);
+                                            setRenamingGroupDesc(group.description || "");
+                                          }}
+                                        >
+                                          <Edit2 className="size-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost" size="icon"
+                                          className="size-7 text-zinc-400 hover:text-red-500"
+                                          onClick={(e) => handleDeleteGroup(e, group.id)}
+                                        >
+                                          <Trash2 className="size-3.5" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </TableBody>
                     )}
-                  >
-                    <TableCell
-                      className={cn(
-                        "py-3 px-4 transition-all",
-                        Number(selectedGroupId) === Number(group.id) && "shadow-[inset_3px_0_0_0_#8b5cf6]"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-lg transition-colors flex items-center justify-center shrink-0", Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500 text-white" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500")}>
-                          <FolderOpen className={cn("size-4", !group.active && "opacity-40")} />
-                        </div>
-                        <div className="min-w-0 flex-1 flex flex-col justify-center">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("font-semibold text-sm truncate", !group.active && "text-zinc-400")}>{group.name}</span>
-                            <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border-none shrink-0">
-                              {group.file_count || 0}
-                            </Badge>
-                          </div>
-                          <p className={cn("text-xs truncate mt-0.5 font-normal leading-tight", group.active ? "text-zinc-400" : "text-zinc-300")}>{group.description || "No description"}</p>
-                        </div>
-                        <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
-                          <div className="flex items-center px-1">
-                            <Switch
-                              checked={group.active}
-                              onCheckedChange={(val) => handleUpdateGroup(group.id, val)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="scale-75 data-[state=checked]:bg-indigo-500"
-                            />
-                          </div>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="size-7 text-zinc-400 hover:text-indigo-500"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingGroup(group);
-                              setRenamingGroupName(group.name);
-                              setRenamingGroupDesc(group.description || "");
-                            }}
-                          >
-                            <Edit2 className="size-3" />
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="size-7 text-zinc-400 hover:text-red-500"
-                            onClick={(e) => handleDeleteGroup(e, group.id)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  </Droppable>
+                </Table>
+              </DragDropContext>
+            )}
           </div>
         </div>
 
@@ -663,8 +730,8 @@ export default function KnowledgeBasePage() {
           {/* Files List Header - Action Bar (Simplified) */}
           <div className="h-12 bg-zinc-50/50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-white/10 px-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">DOCUMENTS</span>
-              {selectedGroup && <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-600 border-none font-bold text-[12px] uppercase">{selectedGroup.name}</Badge>}
+              <span className="text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mr-2">DOCUMENTS</span>
+              {selectedGroup && <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-600 border-none pl-4 pr-4 font-bold text-[12px] uppercase">{selectedGroup.name}</Badge>}
             </div>
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -690,7 +757,7 @@ export default function KnowledgeBasePage() {
                     <th className="w-[100px] px-4 font-bold text-center">Size</th>
                     <th className="w-[150px] px-4 font-bold text-center">Status</th>
                     <th className="w-[100px] px-4 font-bold text-center">Active</th>
-                    <th className="w-[120px] px-4 font-bold text-center">Action</th>
+                    <th className="w-[180px] px-4 font-bold text-center">Action</th>
                   </tr>
                 </thead>
               </table>
@@ -743,8 +810,12 @@ export default function KnowledgeBasePage() {
                               {file.file_name.split('.').pop()}
                             </Badge>
                           </td>
-                          <td className="w-[100px] px-4 text-center text-zinc-500 text-[12px]">
-                            {(file.file_size / 1024).toFixed(1)} KB
+                          <td className="w-[100px] px-4 py-3 text-sm text-gray-600 text-center">
+                            {file.file_size ? (
+                              file.file_size > 1024 * 1024
+                                ? `${(file.file_size / (1024 * 1024)).toFixed(1)} MB`
+                                : `${(file.file_size / 1024).toFixed(1)} KB`
+                            ) : "0 KB"}
                           </td>
                           <td className="w-[150px] px-4">
                             <div className="flex justify-center">
@@ -771,7 +842,7 @@ export default function KnowledgeBasePage() {
                               />
                             </div>
                           </td>
-                          <td className="w-[120px] px-4 text-center">
+                          <td className="w-[180px] px-4 text-center">
                             <div className="flex items-center justify-center gap-1">
                               {(file.status === "completed" || file.status === "error" || file.status === "error_triggering") && (
                                 <Button

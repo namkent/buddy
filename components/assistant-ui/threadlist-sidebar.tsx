@@ -44,7 +44,7 @@ export function ThreadListSidebar({
           </SidebarMenu>
         </div>
       </SidebarHeader>
-      <SidebarContent className="aui-sidebar-content px-2">
+      <SidebarContent className="aui-sidebar-content pl-2 pr-0">
         <ThreadList/>
       </SidebarContent>
       <SidebarRail/>

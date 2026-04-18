@@ -11,8 +11,9 @@ import {
   useAuiState,
   useThreadListItemRuntime,
 } from "@assistant-ui/react";
-import { ArchiveIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from "lucide-react";
-import { type FC, useEffect, useRef } from "react";
+import { ArchiveIcon, MoreHorizontalIcon, PlusIcon, TrashIcon, ChevronDownIcon, MessageSquareIcon } from "lucide-react";
+import { type FC, useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 // ─── ThreadInitializer ────────────────────────────────────────────────────────
 // Tự động switch sang thread khi mở URL /app/{threadId} trực tiếp.
@@ -43,18 +44,33 @@ const ThreadInitializer: FC = () => {
 
 // ─── ThreadList (exported) ────────────────────────────────────────────────────
 export const ThreadList: FC = () => {
+  const [isArchivedOpen, setIsArchivedOpen] = useState(false);
+
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-1 flex-1 overflow-hidden">
       <ThreadInitializer />
       <ThreadListNew />
-      <div className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0 pl-1 pr-0">
         <AuiIf condition={({ threads }) => threads.isLoading}>
-          <ThreadListSkeleton />
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <ThreadListSkeleton />
+          </div>
         </AuiIf>
+
         <AuiIf condition={({ threads }) => !threads.isLoading}>
-          <ThreadListPrimitive.Items>
-            {() => <ThreadListItem />}
-          </ThreadListPrimitive.Items>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Khu vực tin nhắn Active - chiếm tối đa diện tích còn lại */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div className="flex flex-col gap-1">
+                <ThreadListPrimitive.Items>
+                  {() => <ThreadListItem />}
+                </ThreadListPrimitive.Items>
+              </div>
+            </div>
+
+            {/* Khu vực tin nhắn Archived - cố định ở đáy */}
+            <ArchivedSection isArchivedOpen={isArchivedOpen} setIsArchivedOpen={setIsArchivedOpen} />
+          </div>
         </AuiIf>
       </div>
     </ThreadListPrimitive.Root>
@@ -72,7 +88,7 @@ const ThreadListNew: FC = () => {
     <ThreadListPrimitive.New asChild>
       <Button
         variant="outline"
-        className="aui-thread-list-new h-9 justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted data-active:bg-muted"
+        className="aui-thread-list-new h-9 justify-start gap-2 rounded-lg px-3 text-sm hover:bg-muted data-active:bg-muted mr-2"
         onClick={handleClick}
       >
         <PlusIcon className="size-4" />
@@ -101,7 +117,7 @@ const ThreadListSkeleton: FC = () => {
 };
 
 // ─── ThreadListItem ───────────────────────────────────────────────────────────
-const ThreadListItem: FC = () => {
+const ThreadListItem: FC<{ mode?: "active" | "archived" }> = () => {
   return (
     <ThreadListItemPrimitive.Root className="aui-thread-list-item shrink-0 group/item flex h-9 items-center gap-2 rounded-lg transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none data-active:bg-muted">
       <ThreadListItemTrigger />
@@ -139,6 +155,7 @@ const ThreadListItemTrigger: FC = () => {
 
 // ─── ThreadListItemMore ───────────────────────────────────────────────────────
 const ThreadListItemMore: FC = () => {
+  const status = useAuiState((s) => s.threadListItem.status);
   return (
     <ThreadListItemMorePrimitive.Root>
       <ThreadListItemMorePrimitive.Trigger asChild>
@@ -159,7 +176,7 @@ const ThreadListItemMore: FC = () => {
         <ThreadListItemPrimitive.Archive asChild>
           <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
             <ArchiveIcon className="size-4" />
-            Archive
+            {status === "archived" ? "Unarchive" : "Archive"}
           </ThreadListItemMorePrimitive.Item>
         </ThreadListItemPrimitive.Archive>
         <ThreadListItemPrimitive.Delete asChild>
@@ -170,5 +187,48 @@ const ThreadListItemMore: FC = () => {
         </ThreadListItemPrimitive.Delete>
       </ThreadListItemMorePrimitive.Content>
     </ThreadListItemMorePrimitive.Root>
+  );
+};
+
+// ─── ArchivedSection ─────────────────────────────────────────────────────────
+const ArchivedSection: FC<{ isArchivedOpen: boolean, setIsArchivedOpen: (v: boolean) => void }> = ({ isArchivedOpen, setIsArchivedOpen }) => {
+  const runtime = useAssistantRuntime();
+  const [archivedCount, setArchivedCount] = useState(0);
+
+  useEffect(() => {
+    const updateCount = () => {
+      const state = runtime.threads.getState();
+      setArchivedCount(state.archivedThreadIds.length);
+    };
+
+    updateCount();
+    return runtime.threads.subscribe(updateCount);
+  }, [runtime.threads]);
+
+  if (archivedCount === 0) return null;
+
+  return (
+    <div className="flex-none flex flex-col border-t border-zinc-200/50 bg-zinc-50/50 -ml-1">
+      <button
+        onClick={() => setIsArchivedOpen(!isArchivedOpen)}
+        className="flex h-10 w-full items-center justify-between px-3 text-[12px] font-bold text-zinc-400 uppercase tracking-widest hover:text-zinc-600 transition-colors group select-none"
+      >
+        <div className="flex items-center gap-2">
+          <ArchiveIcon className="size-3" />
+          Archived ({archivedCount})
+        </div>
+        <ChevronDownIcon className={cn("size-3 transition-transform duration-200", isArchivedOpen ? "-rotate-180" : "-rotate-90")} />
+      </button>
+
+      {isArchivedOpen && (
+        <div className="max-h-[16rem] overflow-y-auto custom-scrollbar border-t border-zinc-200/30 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex flex-col gap-1 p-1">
+            <ThreadListPrimitive.Items archived>
+              {() => <ThreadListItem />}
+            </ThreadListPrimitive.Items>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

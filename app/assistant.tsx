@@ -45,8 +45,25 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
         ])
       , []);
 
+      const feedbackAdapter = useMemo(() => ({
+        async submit({ message, type }: { message: any, type: "positive" | "negative" }) {
+          await fetch("/api/chat/messages/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              messageId: message.id, 
+              feedback: type === "positive" ? 1 : -1,
+              messageText: typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
+            }),
+          });
+        }
+      }), []);
+
       return useLocalRuntime(modelAdapter, { 
-        adapters: { attachments: attachmentAdapter } 
+        adapters: { 
+          attachments: attachmentAdapter,
+          feedback: feedbackAdapter
+        } 
       });
     },
     adapter: {

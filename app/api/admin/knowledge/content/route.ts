@@ -21,14 +21,14 @@ export async function POST(req: Request) {
     }
 
     // Cấu hình đường dẫn lưu trữ
-    const storagePath = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
+    const storagePath = process.env.EXTERNAL_STORAGE_PATH || path.join(/*turbopackIgnore: true*/ process.cwd(), 'external_storage');
 
     // 1. Khởi tạo bản ghi tệp với đuôi .html
     const dbFile = await dbConnection.knowledge.addFile(groupId, title + ".html", "pending");
 
     // 2. Chuẩn bị cấu trúc thư mục
-    const fileFolder = path.join(storagePath, `group_${groupId}`, `file_${dbFile.id}`);
-    const originFolder = path.join(fileFolder, 'origin');
+    const fileFolder = path.join(/*turbopackIgnore: true*/ storagePath, `group_${groupId}`, `file_${dbFile.id}`);
+    const originFolder = path.join(/*turbopackIgnore: true*/ fileFolder, 'origin');
     
     if (!fs.existsSync(originFolder)) {
       fs.mkdirSync(originFolder, { recursive: true });
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     // 3. Tạo tên file ngẫu nhiên bảo mật
     const obfuscatedName = `${crypto.randomBytes(16).toString('hex')}.html`;
-    const physicalPath = path.join(originFolder, obfuscatedName);
+    const physicalPath = path.join(/*turbopackIgnore: true*/ originFolder, obfuscatedName);
 
     // 4. Ghi nội dung văn bản vào tệp vật lý
     fs.writeFileSync(physicalPath, content, 'utf-8');

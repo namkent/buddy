@@ -154,19 +154,19 @@ export function AdminLogsDrawer({ open, onOpenChange, logId, initialLog }: Admin
                     <FileJson className="size-3" /> DETAILS
                   </span>
                   <div className="w-full min-w-0 grid grid-cols-1 overflow-hidden border border-zinc-200 dark:border-zinc-800 rounded-md bg-muted/30 shadow-sm">
-                    <div className="aui-code-header-root flex items-center justify-between px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-muted/50 text-[10px] font-bold text-zinc-400 uppercase tracking-widest leading-none">
+                    <div className="aui-code-header-root flex items-center justify-between px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-muted/50 text-[12px] font-bold text-zinc-400 uppercase tracking-widest">
                       <span>{log.level === 'error' ? 'Error Log' : 'Context Data'}</span>
                       <button
                         onClick={() => copyToClipboard(log.details || "")}
                         className="flex items-center gap-1.5 text-zinc-400 hover:text-indigo-500 transition-colors"
-                        title="Copy details"
+                        title="Copy"
                       >
                         {copied ? (
                           <>
-                            <Check className="size-3.5" />
+                            <Check className="size-4" />
                           </>
                         ) : (
-                          <Copy className="size-3.5" />
+                          <Copy className="size-4" />
                         )}
                       </button>
                     </div>

@@ -25,14 +25,14 @@ export async function POST(req: Request) {
     const groupId = parseInt(groupIdStr);
 
     // Cấu hình đường dẫn lưu trữ từ môi trường
-    const storagePath = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
+    const storagePath = process.env.EXTERNAL_STORAGE_PATH || path.join(/*turbopackIgnore: true*/ process.cwd(), 'external_storage');
     
     // 1. Khởi tạo bản ghi tệp trong DB với trạng thái 'pending'
-    const dbFile = await dbConnection.knowledge.addFile(groupId, file.name, "pending");
+    const dbFile = await dbConnection.knowledge.addFile(groupId, file.name, "pending", file.size);
 
     // 2. Chuẩn bị thư mục lưu trữ: group_{G}/file_{F}/origin/
-    const fileFolder = path.join(storagePath, `group_${groupId}`, `file_${dbFile.id}`);
-    const originFolder = path.join(fileFolder, 'origin');
+    const fileFolder = path.join(/*turbopackIgnore: true*/ storagePath, `group_${groupId}`, `file_${dbFile.id}`);
+    const originFolder = path.join(/*turbopackIgnore: true*/ fileFolder, 'origin');
     
     if (!fs.existsSync(originFolder)) {
       fs.mkdirSync(originFolder, { recursive: true });
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     // 3. Xử lý tên tệp (Obfuscate) để tăng tính bảo mật và tránh trùng lặp
     const ext = path.extname(file.name);
     const obfuscatedName = `${crypto.randomBytes(16).toString('hex')}${ext}`;
-    const physicalPath = path.join(originFolder, obfuscatedName);
+    const physicalPath = path.join(/*turbopackIgnore: true*/ originFolder, obfuscatedName);
 
     // Đường dẫn URL để truy cập công cộng (thông qua Nginx/File Server)
     const fileUrlPath = `/group_${groupId}/file_${dbFile.id}/origin/${obfuscatedName}`;

@@ -144,6 +144,7 @@ export default function SystemLogsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Sources</SelectItem>
+                <SelectItem value="AI_FEEDBACK">AI Feedback</SelectItem>
                 <SelectItem value="knowledge_base">Knowledge Base</SelectItem>
                 <SelectItem value="auth">Authentication</SelectItem>
                 <SelectItem value="system">System Core</SelectItem>
