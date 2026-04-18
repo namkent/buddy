@@ -201,8 +201,8 @@ export default function SystemLogsPage() {
                     <td className="w-[80px] px-4 text-center">
                       {getLevelBadge(log.level)}
                     </td>
-                    <td className="w-[160px] px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5 text-[12px] font-bold uppercase text-zinc-400 tracking-tighter">
+                    <td className="w-[160px] text-left px-4 text-center">
+                      <div className="flex gap-1.5 text-[12px] font-bold uppercase text-zinc-400 tracking-tighter">
                         <Terminal className="size-3" />
                         {log.source.replace('_', ' ')}
                       </div>

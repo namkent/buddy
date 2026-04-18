@@ -208,7 +208,7 @@ const ArchivedSection: FC<{ isArchivedOpen: boolean, setIsArchivedOpen: (v: bool
   if (archivedCount === 0) return null;
 
   return (
-    <div className="flex-none flex flex-col border-t border-zinc-200/50 bg-zinc-50/50 -ml-1">
+    <div className="flex-none flex flex-col border-t border-zinc-200/50 -ml-1">
       <button
         onClick={() => setIsArchivedOpen(!isArchivedOpen)}
         className="flex h-10 w-full items-center justify-between px-3 text-[12px] font-bold text-zinc-400 uppercase tracking-widest hover:text-zinc-600 transition-colors group select-none"
@@ -217,11 +217,11 @@ const ArchivedSection: FC<{ isArchivedOpen: boolean, setIsArchivedOpen: (v: bool
           <ArchiveIcon className="size-3" />
           Archived ({archivedCount})
         </div>
-        <ChevronDownIcon className={cn("size-3 transition-transform duration-200", isArchivedOpen ? "-rotate-180" : "-rotate-90")} />
+        <ChevronDownIcon className={cn("size-3 transition-transform duration-500", isArchivedOpen ? "" : "-rotate-180")} />
       </button>
 
       {isArchivedOpen && (
-        <div className="max-h-[16rem] overflow-y-auto custom-scrollbar border-t border-zinc-200/30 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div className="max-h-[16rem] overflow-y-auto custom-scrollbar border-t animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="flex flex-col gap-1 p-1">
             <ThreadListPrimitive.Items archived>
               {() => <ThreadListItem />}

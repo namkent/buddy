@@ -124,12 +124,12 @@ export default function KnowledgeBasePage() {
     const items = Array.from(groups);
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
-    
+
     setGroups(items);
-    
+
     // Chuẩn bị dữ liệu cập nhật sort_order dựa trên index mới
     const orders = items.map((item, index) => ({ id: item.id, sort_order: index }));
-    
+
     try {
       const res = await fetch("/api/admin/knowledge/groups/reorder", {
         method: "PUT",
@@ -623,10 +623,10 @@ export default function KnowledgeBasePage() {
                     <TableRow key={group.id} className="hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer">
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center gap-7 pl-6">
-                           <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
-                             <FolderOpen className="size-4" />
-                           </div>
-                           <div className="flex-1"><span className="font-semibold text-sm">{group.name}</span></div>
+                          <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                            <FolderOpen className="size-4" />
+                          </div>
+                          <div className="flex-1"><span className="font-semibold text-sm">{group.name}</span></div>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -665,7 +665,7 @@ export default function KnowledgeBasePage() {
                                     <div {...provided.dragHandleProps} className="text-zinc-300 hover:text-zinc-500 cursor-grab active:cursor-grabbing p-1">
                                       <GripVertical className="size-4" />
                                     </div>
-                                    
+
                                     <div className="flex items-center gap-3 flex-1 min-w-0">
                                       <div className={cn("p-2 rounded-lg transition-colors flex items-center justify-center shrink-0", Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500 text-white" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500")}>
                                         <FolderOpen className={cn("size-4", !group.active && "opacity-40")} />
@@ -810,11 +810,11 @@ export default function KnowledgeBasePage() {
                               {file.file_name.split('.').pop()}
                             </Badge>
                           </td>
-                          <td className="w-[100px] px-4 py-3 text-sm text-gray-600 text-center">
+                          <td className={cn("w-[100px] px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400 text-center", !file.active && "opacity-40")}>
                             {file.file_size ? (
-                              file.file_size > 1024 * 1024
-                                ? `${(file.file_size / (1024 * 1024)).toFixed(1)} MB`
-                                : `${(file.file_size / 1024).toFixed(1)} KB`
+                              Number(file.file_size) >= 1024 * 1024
+                                ? `${(Number(file.file_size) / (1024 * 1024)).toFixed(1)} MB`
+                                : `${(Number(file.file_size) / 1024).toFixed(1)} KB`
                             ) : "0 KB"}
                           </td>
                           <td className="w-[150px] px-4">
