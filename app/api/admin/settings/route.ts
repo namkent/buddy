@@ -33,6 +33,15 @@ export async function PUT(req: Request) {
           await dbConnection.settings.set(item.key, item.value || "", item.description);
         }
       }
+      // Log action
+      await dbConnection.logs.create({
+        user_id: (session.user as any).userId,
+        level: 'info',
+        source: 'system',
+        message: 'Updated system settings',
+        details: JSON.stringify(body.settings)
+      });
+
       return NextResponse.json({ success: true });
     }
     return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });

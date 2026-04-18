@@ -87,6 +87,34 @@ export const dbConnection = {
         active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS knowledge_groups (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS knowledge_files (
+        id SERIAL PRIMARY KEY,
+        group_id INTEGER REFERENCES knowledge_groups(id) ON DELETE CASCADE,
+        file_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        error_message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS system_logs (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        level TEXT NOT NULL, -- 'info', 'error', 'warn'
+        source TEXT NOT NULL, -- 'knowledge_base', 'auth', 'system', 'users'
+        message TEXT NOT NULL,
+        details TEXT,
+        content TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
     
     // Seed default settings if they don't exist
@@ -109,6 +137,8 @@ export const dbConnection = {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false');
       // Track last activity for "online" detection (5-min window)
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP WITH TIME ZONE');
+      // Add error_message to knowledge_files
+      await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS error_message TEXT');
     } catch(e) {}
   },
 
@@ -316,6 +346,104 @@ export const dbConnection = {
     },
     async delete(id: number) {
       await pool.query('DELETE FROM thread_suggestions WHERE id = $1', [id]);
+    }
+  },
+
+  knowledge: {
+    async createGroup(name: string, description: string = '') {
+      const res = await pool.query(
+        'INSERT INTO knowledge_groups (name, description) VALUES ($1, $2) RETURNING *',
+        [name, description]
+      );
+      return res.rows[0];
+    },
+    async getGroups() {
+      const res = await pool.query('SELECT * FROM knowledge_groups ORDER BY created_at DESC');
+      return res.rows;
+    },
+    async getGroupsWithCount() {
+      const res = await pool.query(`
+        SELECT g.*, COUNT(f.id)::int AS file_count
+        FROM knowledge_groups g
+        LEFT JOIN knowledge_files f ON f.group_id = g.id
+        GROUP BY g.id
+        ORDER BY g.created_at DESC
+      `);
+      return res.rows;
+    },
+    async deleteGroup(id: number) {
+      await pool.query('DELETE FROM knowledge_groups WHERE id = $1', [id]);
+    },
+    async updateGroup(id: number, data: { name?: string; description?: string }) {
+      const fields = [];
+      const values = [];
+      let i = 1;
+      if (data.name !== undefined) {
+        fields.push(`name = $${i++}`);
+        values.push(data.name);
+      }
+      if (data.description !== undefined) {
+        fields.push(`description = $${i++}`);
+        values.push(data.description);
+      }
+      if (fields.length === 0) return;
+      values.push(id);
+      await pool.query(`UPDATE knowledge_groups SET ${fields.join(', ')} WHERE id = $${i}`, values);
+    },
+    async addFile(group_id: number, file_name: string, file_path: string) {
+      const res = await pool.query(
+        'INSERT INTO knowledge_files (group_id, file_name, file_path) VALUES ($1, $2, $3) RETURNING *',
+        [group_id, file_name, file_path]
+      );
+      return res.rows[0];
+    },
+    async getFiles(group_id: number) {
+      const res = await pool.query('SELECT * FROM knowledge_files WHERE group_id = $1 ORDER BY created_at DESC', [group_id]);
+      return res.rows;
+    },
+    async deleteFile(id: number) {
+      await pool.query('DELETE FROM knowledge_files WHERE id = $1', [id]);
+    },
+    async updateFileStatus(id: number, status: string, error_message: string | null = null) {
+      if (error_message) {
+        await pool.query('UPDATE knowledge_files SET status = $1, error_message = $2 WHERE id = $3', [status, error_message, id]);
+      } else {
+        await pool.query('UPDATE knowledge_files SET status = $1 WHERE id = $2', [status, id]);
+      }
+    },
+    async updateFile(id: number, data: { file_name?: string }) {
+      if (data.file_name) {
+        await pool.query('UPDATE knowledge_files SET file_name = $1 WHERE id = $2', [data.file_name, id]);
+      }
+    }
+  },
+
+  logs: {
+    async create(data: { user_id?: string; level: string; source: string; message: string; details?: string; content?: string }) {
+      const res = await pool.query(
+        'INSERT INTO system_logs (user_id, level, source, message, details, content) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [data.user_id || null, data.level, data.source, data.message, data.details || null, data.content || null]
+      );
+      return res.rows[0];
+    },
+    async findAll(limit: number = 100, offset: number = 0, filters: any = {}) {
+      const where = [];
+      const values = [];
+      let i = 1;
+      if (filters.level) { where.push(`level = $${i++}`); values.push(filters.level); }
+      if (filters.source) { where.push(`source = $${i++}`); values.push(filters.source); }
+      if (filters.user_id) { where.push(`user_id = $${i++}`); values.push(filters.user_id); }
+      
+      const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+      const res = await pool.query(`
+        SELECT l.*, u.user_name, u.email 
+        FROM system_logs l
+        LEFT JOIN users u ON l.user_id = u.id
+        ${whereClause}
+        ORDER BY l.created_at DESC
+        LIMIT $${i++} OFFSET $${i++}
+      `, [...values, limit, offset]);
+      return res.rows;
     }
   }
 };

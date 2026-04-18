@@ -31,14 +31,15 @@ export async function POST(req: Request) {
 
     const promptText = isPeriodic
       ? `Dựa vào lịch sử đoạn chat gần đây sau đây, hãy đặt một tiêu đề thật ngắn gọn (tối đa 4-5 từ) tóm tắt nội dung chính của cuộc hội thoại. Chỉ trả về đúng đoạn text của tiêu đề, không cần bọc trong ngoặc kép hay giải thích gì thêm.\n\nLịch sử chat:\n"${message}"`
-      : `Dựa vào đoạn tin nhắn mở đầu sau đây, hãy đặt một tiêu đề thật ngắn gọn (tối đa 4-5 từ) cho cuộc hội thoại. Chỉ trả về đúng đoạn text của tiêu đề, không cần bọc trong ngoặc kép hay giải thích gì thêm.\n\nTin nhắn: "${message}"`;
+      : `Dựa vào đoạn tin nhắn mở đầu sau đây, hãy đặt một tiêu đề thật ngắn gọn (tối đa 4-5 từ) cho cuộc hội thoại. Chỉ trả về đúng đoạn text của tiêu đề, không cần bọc trong ngoặc kép hay giải thích gì thêm.\n\nTin nhắn: "${message}"`
+      + '\nHãy thêm icon liên quan đến nội dung tiêu đề vào đầu tiêu đề.';
 
     const { text } = await generateText({
       model: openai.chat(process.env.OPENAI_MODEL || "llama-3.3-70b-versatile"),
       prompt: promptText,
       providerOptions: {
         openai: {
-          reasoningEffort: "none",
+          // reasoningEffort: "none",
           reasoningSummary: "auto",
         },
       },

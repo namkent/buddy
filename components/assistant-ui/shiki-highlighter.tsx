@@ -45,6 +45,7 @@ export const SyntaxHighlighter: FC<HighlighterProps> = ({
       theme={theme}
       addDefaultStyles={addDefaultStyles}
       showLanguage={showLanguage}
+      showLineNumbers={true}
       defaultColor="light-dark()"
       className={cn(
         "aui-shiki-base [&_pre]:overflow-x-auto [&_pre]:rounded-b-lg [&_pre]:bg-muted/75! [&_pre]:p-4",

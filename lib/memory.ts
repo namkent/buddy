@@ -3,14 +3,14 @@
  * Endpoints: POST /memories (add), POST /search (query context).
  */
 
-const MEM0_SERVICE_URL = process.env.MEM0_SERVICE_URL || "http://localhost:8000";
+const RAG_SERVICE_URL = process.env.RAG_SERVICE_URL || "http://localhost:8000";
 
 export const memory = {
   /**
    * Lưu tin nhắn mới vào vector memory của user.
    */
   async add(text: string, options: { userId: string }) {
-    const res = await fetch(`${MEM0_SERVICE_URL}/memories`, {
+    const res = await fetch(`${RAG_SERVICE_URL}/memories`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -30,7 +30,7 @@ export const memory = {
    * Trả về chuỗi context đã format, hoặc "" nếu không có gì.
    */
   async search(query: string, options: { userId: string }): Promise<string> {
-    const res = await fetch(`${MEM0_SERVICE_URL}/search`, {
+    const res = await fetch(`${RAG_SERVICE_URL}/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, user_id: options.userId, top_k: 5 }),

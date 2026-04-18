@@ -168,14 +168,57 @@ export async function POST(req: Request) {
     else if (trimmedContent.startsWith("/search ") || trimmedContent.startsWith("[Search] ")) {
       isSlashCommand = true;
       const query = trimmedContent.replace(/^(\/search|\[Search\])\s+/i, '').trim();
-      resolvedSystemPrompt = "Người dùng đang yêu cầu tìm kiếm tri thức nội bộ. Hiện tại tính năng RAG đang trong giai đoạn phát triển và mô phỏng. Hãy báo rằng bạn đã ghi nhận từ khoá tìm kiếm, liệt kê lại nó một cách trang trọng và đưa ra một vài ví dụ ngẫu nhiên mô phỏng quá trình tìm kiếm.";
-      // Xoá trigger command khỏi phần LLM tiếp nhận
-      if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
-        apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: `Tìm kiếm thông tin: ${query}` } : c);
-      } else {
-        apiMessages[apiMessages.length - 1].content = `Tìm kiếm thông tin: ${query}`;
+      
+      // Perform RAG search to python service
+      let ragContext = "Không có kết quả nào.";
+      try {
+        const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
+        const res = await fetch(`${pythonUrl}/rag/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, top_k: 5 }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.results && data.results.length > 0) {
+            ragContext = data.results.map((r: any, idx: number) => {
+              let chunkStr = `[Tài liệu ${idx + 1}]:\n${r.text}`;
+              if (r.image_url) {
+                const fullImageUrl = r.image_url.startsWith('http') 
+                  ? r.image_url 
+                  : `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${r.image_url}`;
+                // Return markdown image
+                chunkStr += `\nHình ảnh đính kèm: ![image](${fullImageUrl})`;
+              }
+              return chunkStr;
+            }).join("\n\n");
+          }
+        }
+      } catch (e) {
+        console.error("RAG Search Error:", e);
       }
-      cleanMessageContent = `Tìm kiếm thông tin: ${query}`;
+
+      console.log(`[RAG Search] Query: ${query}, Results Count: ${ragContext === "Không có kết quả nào." ? 0 : 5}`);
+
+      resolvedSystemPrompt = `Bạn là chuyên gia RAG (Retrieval-Augmented Generation) của hệ thống SDV MES. Người dùng đang tìm kiếm thông tin với câu hỏi: "${query}".
+
+TRÍCH DẪN TÀI LIỆU NỘI BỘ (GROUNDING DATA):
+${ragContext}
+
+QUY TẮC PHẢN HỒI (BẮT BUỘC):
+1. CHỈ ĐƯỢC PHÉP dựa vào các trích dẫn trên để trả lời. 
+2. NẾU CÓ HÌNH ẢNH (markdown ![image](url)) trong trích dẫn, bạn PHẢI nhúng hình ảnh đó vào vị trí phù hợp trong câu trả lời của bạn. Đây là yêu cầu quan trọng nhất để người dùng có thể hình dung được quy trình.
+3. NẾU TRONG TRÍCH DẪN KHÔNG CÓ THÔNG TIN, bạn PHẢI nói: "Tôi không tìm thấy thông tin này trong hệ thống tài liệu." TUYỆT ĐỐI KHÔNG BIẠ ĐẶT.
+4. Trả lời bằng ĐÚNG ngôn ngữ mà người dùng dùng để hỏi.
+5. Luôn giữ thái độ chuyên nghiệp, hỗ trợ kỹ thuật tận tâm.`;
+
+      // Xoá trigger command khỏi phần LLM tiếp nhận, chỉ truyền câu hỏi gốc
+      if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
+        apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: `Câu hỏi: ${query}` } : c);
+      } else {
+        apiMessages[apiMessages.length - 1].content = `Câu hỏi: ${query}`;
+      }
+      cleanMessageContent = `Câu hỏi: ${query}`;
     }
     else if (trimmedContent.startsWith("/translate ") || trimmedContent.startsWith("[Translate ")) {
       // parse định dạng: "/translate Tiếng Việt:\n<nội-dung-cần-dịch>" hoặc "[Translate English]:\n..."
@@ -209,6 +252,8 @@ export async function POST(req: Request) {
     if (activeTools.ragSearch) delete activeTools.ragSearch;
   }
 
+  console.log(`memory [${userId}] : ${memoryContextStr}`);
+
   const finalSystemPrompt = isSlashCommand
     ? resolvedSystemPrompt
     : `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`;
@@ -222,7 +267,7 @@ export async function POST(req: Request) {
     } as any,
     providerOptions: {
       openai: {
-        reasoningEffort: "none",
+        // reasoningEffort: "low",
         reasoningSummary: "auto",
       },
     },

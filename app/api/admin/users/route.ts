@@ -25,6 +25,17 @@ export async function PUT(req: Request) {
     const dbRole = role_id ? parseInt(role_id) : undefined;
     
     await dbConnection.users.update(id, { role_id: dbRole, is_banned });
+
+    // Log action
+    const adminSession = await getServerSession(authOptions);
+    await dbConnection.logs.create({
+      user_id: (adminSession?.user as any).userId,
+      level: 'info',
+      source: 'users',
+      message: `Updated user information for ID: ${id}`,
+      details: JSON.stringify({ role_id: dbRole, is_banned })
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -41,6 +52,16 @@ export async function DELETE(req: Request) {
     if (!id) return NextResponse.json({ error: "User ID required" }, { status: 400 });
 
     await dbConnection.users.delete(id);
+
+    // Ghi Log
+    const adminSession = await getServerSession(authOptions);
+    await dbConnection.logs.create({
+      user_id: (adminSession?.user as any).userId,
+      level: 'warn',
+      source: 'users',
+      message: `Đã xóa người dùng vĩnh viễn ID: ${id}`
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error(err);
