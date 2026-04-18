@@ -33,7 +33,7 @@ const ThreadInitializer: FC = () => {
     doneRef.current = true;
 
     runtime.threads.switchToThread(threadId).catch((e: unknown) => {
-      console.error("[MES Buddy] Could not restore thread from URL:", e);
+      console.error("[MES Assistant] Could not restore thread from URL:", e);
       doneRef.current = false; // allow retry on next render if failed
     });
   }, [isLoading, runtime]);
@@ -145,7 +145,7 @@ const ThreadListItemMore: FC = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="aui-thread-list-item-more mr-2 size-7 p-0 opacity-0 transition-opacity group-hover/item:opacity-100 data-[state=open]:bg-accent data-[state=open]:opacity-100 group-data-active/item:opacity-100"
+          className="aui-thread-list-item-more mr-2 size-7 p-0 opacity-0 invisible transition-all group-hover/item:opacity-100 group-hover/item:visible data-[state=open]:bg-accent data-[state=open]:opacity-100 data-[state=open]:visible"
         >
           <MoreHorizontalIcon className="size-4" />
           <span className="sr-only">More options</span>

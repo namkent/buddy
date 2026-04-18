@@ -1,49 +1,67 @@
 import { dbConnection } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { requireAuth, errorResponse, successResponse } from "@/lib/api-utils";
 
+/**
+ * [GET] Lấy toàn bộ danh sách tin nhắn của một cuộc hội thoại cụ thể
+ */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) return new NextResponse("Unauthorized", { status: 401 });
+  const { error, user } = await requireAuth();
+  if (error) return error;
 
-  const role = (session.user as any).role;
+  const { userId, role } = user!;
+
+  // Kiểm tra quyền truy cập cho tài khoản Guest
   if (role === "guest") {
     const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
-    if (enableGuest !== "true") return NextResponse.json([]);
+    if (enableGuest !== "true") return successResponse([]);
   }
 
   const { searchParams } = new URL(req.url);
   const threadId = searchParams.get("threadId");
-  if (!threadId) return NextResponse.json([]);
+  if (!threadId) return successResponse([]);
   
+  // Kiểm tra tính hợp lệ và quyền sở hữu hội thoại
   const thread = await dbConnection.threads.findById(threadId);
-  if (!thread || (thread as any).user_id !== (session.user as any).userId) return NextResponse.json([]);
+  if (!thread || (thread as any).user_id !== userId) return successResponse([]);
 
-  const messages = await dbConnection.messages.findByThreadId(threadId);
-  return NextResponse.json(messages);
+  try {
+    const messages = await dbConnection.messages.findByThreadId(threadId);
+    return NextResponse.json(messages);
+  } catch (err) {
+    console.error("Fetch messages fail:", err);
+    return errorResponse("Không thể tải tin nhắn", 500);
+  }
 }
 
+/**
+ * [POST] Lưu một tin nhắn mới vào database (Thường gọi từ UI sau khi gửi/nhận xong)
+ */
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) return new NextResponse("Unauthorized", { status: 401 });
+  const { error, user } = await requireAuth();
+  if (error) return error;
 
-  const role = (session.user as any).role;
+  const { userId, role } = user!;
+
   if (role === "guest") {
     const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
-    if (enableGuest !== "true") return new NextResponse("Forbidden", { status: 403 });
+    if (enableGuest !== "true") return errorResponse("Quyền hạn Guest bị hạn chế", 403);
   }
 
   try {
     const message = await req.json();
-    message.userId = (session.user as any).userId;
+    message.userId = userId;
     
+    // Đảm bảo tin nhắn được lưu vào hội thoại thuộc về đúng người dùng
     const thread = await dbConnection.threads.findById(message.thread_id || message.threadId);
-    if (!thread || (thread as any).user_id !== message.userId) return new NextResponse("Forbidden", { status: 403 });
+    if (!thread || (thread as any).user_id !== userId) {
+      return errorResponse("Bạn không có quyền gửi tin nhắn vào hội thoại này", 403);
+    }
 
     await dbConnection.messages.create(message);
-    return NextResponse.json({ success: true });
-  } catch (e) {
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return successResponse({ success: true });
+  } catch (err) {
+    console.error("Save message fail:", err);
+    return errorResponse("Lỗi hệ thống khi lưu tin nhắn", 500);
   }
 }

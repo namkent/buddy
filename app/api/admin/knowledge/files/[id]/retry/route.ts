@@ -40,7 +40,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       body: JSON.stringify({ 
         file_id: file.id, 
         group_id: file.group_id,
-        file_path: physicalPath
+        file_path: physicalPath,
+        file_name: file.file_name
       })
     }).catch(err => {
         console.error("Retry RAG Fail:", err);

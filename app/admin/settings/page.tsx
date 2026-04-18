@@ -133,9 +133,9 @@ export default function SettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-2">
-          <TabsTrigger value="general">General Config</TabsTrigger>
-          <TabsTrigger value="suggestions">Thread Suggestions</TabsTrigger>
+        <TabsList className="mb-2 bg-zinc-100/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 p-1">
+          <TabsTrigger value="general" className="data-[state=active]:text-indigo-600 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 shadow-none">General Config</TabsTrigger>
+          <TabsTrigger value="suggestions" className="data-[state=active]:text-indigo-600 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 shadow-none">Thread Suggestions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -175,6 +175,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={settings.ENABLE_GUEST_ACCESS === "true"}
                       onCheckedChange={checked => setSettings({ ...settings, ENABLE_GUEST_ACCESS: checked ? "true" : "false" })}
+                      className="data-[state=checked]:bg-indigo-600"
                     />
                   </div>
                 </div>
@@ -210,6 +211,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={settings.ENABLE_TOOL_SUMMARIZE !== "false"}
                       onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_SUMMARIZE: checked ? "true" : "false" })}
+                      className="data-[state=checked]:bg-indigo-600"
                     />
                   </div>
                 </div>
@@ -223,6 +225,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={settings.ENABLE_TOOL_TRANSLATE !== "false"}
                       onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_TRANSLATE: checked ? "true" : "false" })}
+                      className="data-[state=checked]:bg-indigo-600"
                     />
                   </div>
                 </div>
@@ -236,6 +239,7 @@ export default function SettingsPage() {
                     <Switch
                       checked={settings.ENABLE_TOOL_RAG_SEARCH !== "false"}
                       onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_RAG_SEARCH: checked ? "true" : "false" })}
+                      className="data-[state=checked]:bg-indigo-600"
                     />
                   </div>
                 </div>
@@ -245,7 +249,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="pt-6 flex justify-end">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20 px-8">
               {saving ? "Saving..." : "Save Settings"}
             </Button>
           </div>
@@ -261,7 +265,7 @@ export default function SettingsPage() {
                 <h3 className="font-semibold text-zinc-900 dark:text-white">Auto-Generate Trends</h3>
                 <p className="text-xs text-zinc-500 mt-1">LLM analyzes the latest chat queries every 24h to generate suggestions.</p>
               </div>
-              <Button variant="outline" className="w-full" onClick={handleTriggerCron} disabled={saving}>
+              <Button variant="outline" className="w-full border-indigo-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-400 dark:hover:bg-indigo-500/10" onClick={handleTriggerCron} disabled={saving}>
                 {saving ? "Wait..." : "Trigger Cron"}
               </Button>
             </div>
@@ -289,7 +293,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="flex justify-end pt-1">
-                <Button type="submit" className="w-full" size="sm" disabled={creating}>
+                <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/20" size="sm" disabled={creating}>
                   {creating ? "Đang tạo..." : "Add Suggestion"}
                 </Button>
               </div>
@@ -297,7 +301,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Cột Phải: Scrollable List */}
-          <div className="w-full md:w-2/3 max-h-[calc(100vh-480px)] min-h-[400px] overflow-y-auto pr-2 space-y-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-zinc-300 dark:[&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div className="w-full md:w-2/3 max-h-[calc(100vh-480px)] min-h-[400px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
             {suggestions.length === 0 ? (
               <div className="text-center p-8 border border-dashed rounded-lg text-zinc-500 h-32 flex items-center justify-center">
                 No suggestions found. Wait for cron job or trigger it manually!
@@ -306,7 +310,7 @@ export default function SettingsPage() {
               <div key={sug.id} className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
                 <div className="space-y-1 w-full max-w-xl">
                   <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-violet-600 dark:text-violet-400">{sug.title}</h4>
+                    <h4 className="font-semibold text-indigo-600 dark:text-indigo-400">{sug.title}</h4>
                     {sug.is_auto_generated && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 uppercase tracking-wide">Auto</span>
                     )}
@@ -318,7 +322,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => handleToggleSuggestionActive(sug.id, sug.active)}>
+                  <Button variant="outline" size="sm" onClick={() => handleToggleSuggestionActive(sug.id, sug.active)} className="border-indigo-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-400 dark:hover:bg-indigo-500/10">
                     {sug.active ? "Hide" : "Activate"}
                   </Button>
                   <Button variant="destructive" size="sm" onClick={() => handleDeleteSuggestion(sug.id)}>

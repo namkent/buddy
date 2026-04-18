@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { AuthProvider } from "@/components/assistant-ui/session-provider";
+import { AutoLoginRedirect } from "@/components/assistant-ui/auto-login-redirect";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { HeartbeatProvider } from "@/components/assistant-ui/heartbeat-provider";
@@ -48,6 +49,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
+            <AutoLoginRedirect />
             <HeartbeatProvider />
             <TooltipProvider>{children}</TooltipProvider>
           </AuthProvider>

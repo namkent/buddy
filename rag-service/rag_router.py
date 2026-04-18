@@ -8,6 +8,7 @@ import requests
 import psycopg2
 import fitz  # Thư viện PyMuPDF xử lý PDF
 import docx  # Thư viện xử lý file Word (.docx)
+import re
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
@@ -103,22 +104,102 @@ def get_embeddings(texts: List[str]):
         return [item["embedding"] for item in res_json["data"]]
     raise Exception(f"Lỗi Embedding API: {res_json}")
 
+def get_image_description(image_path: str):
+    """Sử dụng Vision API để lấy mô tả nội dung hình ảnh."""
+    # 1. Kiểm tra tính năng có được bật hay không
+    if os.getenv("ENABLE_RAG_VISION", "false").lower() != "true":
+        return ""
+        
+    api_key = os.getenv("OPENAI_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL")
+    model = os.getenv("VISION_MODEL")
+    
+    if not api_key:
+        logging.warning("Missing OPENAI_KEY for RAG Vision.")
+        return ""
+        
+    if not base_url:
+        logging.warning("Missing OPENAI_BASE_URL for RAG Vision. Image description skipped.")
+        return ""
+
+    if not model:
+        logging.warning("Missing VISION_MODEL for RAG Vision. Image description skipped.")
+        return ""
+        
+    try:
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Mô tả ngắn gọn nội dung ảnh này bằng tiếng Việt (1-2 câu)."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 300
+        }
+        
+        # Chỉ sử dụng base_url từ .env, không fix cứng fallback OpenAI
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        response = requests.post(url, headers=headers, json=payload, timeout=45)
+        
+        if response.status_code != 200:
+            logging.error(f"Vision API Error ({response.status_code}): {response.text}")
+            return ""
+            
+        result = response.json()
+        return result['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        logging.error(f"Exception in get_image_description for {image_path}: {e}")
+        return ""
+
 # --- LOGIC XỬ LÝ TÀI LIỆU CHI TIẾT ---
 
-def process_document(kb_qclient, file_id: int, group_id: int, file_path: str):
+def process_document(kb_qclient, file_id: int, group_id: int, file_path: str, file_name: str = None):
     """Luồng xử lý chính: Đọc file -> Cắt nhỏ -> Vector hóa -> Lưu trữ."""
+    if not file_name:
+        file_name = os.path.basename(file_path)
     try:
+        # Tập trung log vào một file dễ tìm
+        global_log = r"P:\mes-buddy-storage\rag_global_debug.txt"
+        with open(global_log, "a", encoding="utf-8") as f:
+            f.write(f"\n--- {time.ctime()} --- Processing file_id={file_id}, group_id={group_id}\n")
+            f.write(f"Path: {file_path}\n")
+            
         ext = file_path.lower().split('.')[-1]
+        with open(global_log, "a", encoding="utf-8") as f:
+            f.write(f"Extension: {ext}\n")
+            
         chunks = [] # Danh sách các mẩu văn bản sau khi cắt
-        
-        # Cấu hình cắt nhỏ văn bản (mỗi mẩu 1000 ký tự, gối đầu 150 ký tự để giữ ngữ cảnh)
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
         
         # Tìm thư mục lưu hình ảnh trích xuất: {root}/group_{G}/file_{F}/images/
         file_folder = os.path.dirname(os.path.dirname(file_path))
         images_dir = os.path.join(file_folder, "images")
         os.makedirs(images_dir, exist_ok=True)
-        
+        with open(global_log, "a", encoding="utf-8") as f:
+            f.write(f"Images Dir: {images_dir}\n")
+
+        # Cấu hình cắt nhỏ văn bản tối ưu cho văn bản dài và pháp lý
+        # Ưu tiên ngắt đoạn tại các mục Điều, Chương, Mục để giữ ngữ cảnh
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1500, 
+            chunk_overlap=200,
+            separators=["\nĐiều ", "\nChương ", "\nMục ", "\nPhần ", "\n\n", "\n", " "]
+        )
+
         # 1. Xử lý file PDF
         if ext == "pdf":
             doc = fitz.open(file_path)
@@ -131,26 +212,64 @@ def process_document(kb_qclient, file_id: int, group_id: int, file_path: str):
                 for img_idx, img in enumerate(page.get_images(full=True)):
                     xref = img[0]
                     base_image = doc.extract_image(xref)
-                    img_name = f"{page_num}_{img_idx}.{base_image['ext']}"
+                    img_name = f"pdf_{page_num}_{img_idx}.{base_image['ext']}"
                     img_full_path = os.path.join(images_dir, img_name)
                     with open(img_full_path, "wb") as f:
                         f.write(base_image["image"])
                     
-                    images_on_page.append(f"/group_{group_id}/file_{file_id}/images/{img_name}")
+                    # Lấy mô tả ảnh bằng AI
+                    description = get_image_description(img_full_path)
+                    
+                    rel_url = f"/group_{group_id}/file_{file_id}/images/{img_name}"
+                    images_on_page.append({"url": rel_url, "desc": description})
+                    # Chèn marker kèm mô tả để AI biết nội dung ảnh
+                    text += f"\n\n[Mô tả ảnh: {description}] ![image]({rel_url})\n"
                 
                 # Cắt văn bản trang này
                 page_chunks = splitter.split_text(text)
                 for chunk in page_chunks:
-                    # Gán ảnh đầu tiên tìm thấy trên trang cho mẩu văn bản này (nếu có)
-                    img_url = images_on_page[0] if images_on_page else None
-                    chunks.append({"text": chunk, "image_url": img_url, "page": page_num})
+                    # Gắn ảnh chỉ khi chunk thực sự chứa markdown tag ảnh
+                    import re
+                    found_imgs = re.findall(r'!\[.*?\]\((.*?)\)', chunk)
+                    # Không mặc định lấy ảnh đầu trang nếu chunk không chứa ảnh
+                    img_urls = found_imgs if found_imgs else []
+                    chunks.append({"text": chunk, "images": img_urls, "page": page_num + 1})
                     
         # 2. Xử lý file Word (.docx)
         elif ext in ["doc", "docx"]:
             doc = docx.Document(file_path)
+            
+            # Trích xuất ảnh từ docx
+            docx_images = []
+            img_counter = 0
+            for rel in doc.part.rels.values():
+                if "image" in rel.target_ref:
+                    img_counter += 1
+                    img_data = rel.target_part.blob
+                    img_ext = rel.target_ref.split('.')[-1]
+                    img_name = f"docx_{img_counter}.{img_ext}"
+                    img_full_path = os.path.join(images_dir, img_name)
+                    with open(img_full_path, "wb") as f:
+                        f.write(img_data)
+                    
+                    # Lấy mô tả ảnh bằng AI
+                    description = get_image_description(img_full_path)
+                    
+                    rel_url = f"/group_{group_id}/file_{file_id}/images/{img_name}"
+                    docx_images.append({"url": rel_url, "desc": description})
+
+            # Lấy text và chèn ảnh kèm mô tả vào cuối
             full_text = "\n".join([para.text for para in doc.paragraphs])
+            if docx_images:
+                full_text += "\n\n### HÌNH ẢNH TRONG TÀI LIỆU:\n"
+                for iinfo in docx_images:
+                    full_text += f"[Mô tả: {iinfo['desc']}] ![image]({iinfo['url']})\n"
+
             for chunk in splitter.split_text(full_text):
-                chunks.append({"text": chunk, "image_url": None, "page": 0})
+                import re
+                found_imgs = re.findall(r'!\[.*?\]\((.*?)\)', chunk)
+                img_urls = found_imgs if found_imgs else []
+                chunks.append({"text": chunk, "images": img_urls, "page": 1})
                 
         # 3. Xử lý file văn bản thuần (.txt)
         elif ext == "txt":
@@ -158,53 +277,90 @@ def process_document(kb_qclient, file_id: int, group_id: int, file_path: str):
                 full_text = f.read()
             for chunk in splitter.split_text(full_text):
                 chunks.append({"text": chunk, "image_url": None, "page": 0})
-
-        # 4. Xử lý file HTML (Hướng dẫn vận hành SDV)
+ 
+        # 4. Xử lý file HTML (Nội dung thủ công hoặc tài liệu Web)
         elif ext == "html":
             with open(file_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
             soup = BeautifulSoup(html_content, 'html.parser')
             
-            # Trình trích xuất ảnh thông minh từ HTML (Base64 hoặc URL)
+            # Trích xuất ảnh thông minh và thay thế bằng Markdown tag TRỰC TIẾP trong văn bản
             img_tags = soup.find_all('img')
-            images_list = []
-            for idx, img in enumerate(img_tags):
-                src = img.get('src', '')
-                if not src: continue
-                img_name, img_data = None, None
-                
-                try:
-                    if src.startswith('data:image'): # Dạng chuỗi Base64
-                        header, data = src.split(',', 1)
-                        img_ext = header.split('image/')[1].split(';')[0] if 'image/' in header else "png"
-                        img_data = base64.b64decode(data)
-                        img_name = f"img_{idx}.{img_ext}"
-                    elif src.startswith('http'): # Dạng đường dẫn mạng
-                        img_res = requests.get(src, timeout=10)
-                        if img_res.status_code == 200:
-                            img_ext = src.split('.')[-1].split('?')[0][:4] or "png"
-                            img_name = f"img_{idx}.{img_ext}"
-                            img_data = img_res.content
-                    
-                    if img_name and img_data:
-                        with open(os.path.join(images_dir, img_name), "wb") as f:
-                            f.write(img_data)
-                        rel_url = f"/group_{group_id}/file_{file_id}/images/{img_name}"
-                        images_list.append({"index": idx, "url": rel_url, "tag": img})
-                        # Đánh dấu vị trí ảnh trong văn bản
-                        img.replace_with(f" [IMG_REF_{idx}] ")
-                except Exception as ex:
-                    logging.warning(f"Bỏ qua ảnh {idx} do lỗi: {ex}")
+            
+            # Debug log file
+            debug_log_path = os.path.join(images_dir, "debug_log.txt")
+            with open(debug_log_path, "w", encoding="utf-8") as debug_f:
+                debug_f.write(f"Starting image extraction for file {file_id}\n")
+                debug_f.write(f"Total img tags found: {len(img_tags)}\n")
 
-            # Trích xuất văn bản thuần và cắt nhỏ
+                for idx, img in enumerate(img_tags):
+                    src = img.get('src', '')
+                    actual_src = src or img.get('data-src', '')
+                    debug_f.write(f"[{idx}] Found img: src='{src}', actual_src='{actual_src}'\n")
+                    
+                    if not actual_src: 
+                        debug_f.write(f"[{idx}] Empty src, skipping\n")
+                        continue
+
+                    if actual_src.startswith('//'):
+                        actual_src = 'https:' + actual_src
+                    
+                    try:
+                        img_name, img_data = None, None
+                        
+                        if actual_src.startswith('data:image'):
+                            debug_f.write(f"[{idx}] Processing Base64 image\n")
+                            header, data = actual_src.split(',', 1)
+                            img_ext = header.split('image/')[1].split(';')[0] if 'image/' in header else "png"
+                            img_data = base64.b64decode(data)
+                            img_name = f"manual_{idx}.{img_ext}"
+                        elif actual_src.startswith('http'):
+                            debug_f.write(f"[{idx}] Downloading from {actual_src}\n")
+                            # Tránh bị rate limit 429
+                            time.sleep(1)
+                            headers = {
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+                            }
+                            img_res = requests.get(actual_src, headers=headers, timeout=15)
+                            debug_f.write(f"[{idx}] Request status: {img_res.status_code}\n")
+                            
+                            if img_res.status_code == 200:
+                                content_type = img_res.headers.get('Content-Type', '')
+                                img_ext = content_type.split('/')[-1] if '/' in content_type else "png"
+                                if not img_ext or len(img_ext) > 4:
+                                    img_ext = actual_src.split('.')[-1].split('?')[0][:4] or "png"
+                                
+                                img_name = f"web_{idx}.{img_ext}"
+                                img_data = img_res.content
+                            else:
+                                debug_f.write(f"[{idx}] Failed download: status={img_res.status_code}\n")
+                        
+                        if img_name and img_data:
+                            img_path = os.path.join(images_dir, img_name)
+                            with open(img_path, "wb") as f:
+                                f.write(img_data)
+                            
+                            # Lấy mô tả ảnh bằng AI
+                            description = get_image_description(img_path)
+                            
+                            rel_url = f"/group_{group_id}/file_{file_id}/images/{img_name}"
+                            # Thay thế bằng markdown chứa cả mô tả để Embedding có thêm thông tin
+                            img.replace_with(f" [Mô tả ảnh: {description}] ![image]({rel_url}) ")
+                            debug_f.write(f"[{idx}] Success: Saved to {img_name} with desc: {description[:30]}...\n")
+                    except Exception as ex:
+                        debug_f.write(f"[{idx}] Exception: {ex}\n")
+                        logging.warning(f"Lỗi khi xử lý ảnh {idx} trong HTML: {ex}")
+ 
+            # Trích xuất văn bản (đã chứa các thẻ ![image](url))
             full_text = soup.get_text(separator='\n')
             for chunk in splitter.split_text(full_text):
-                found_url = next((info["url"] for info in images_list if f"[IMG_REF_{info['index']}]" in chunk), None)
-                # Làm sạch nhãn đánh dấu trước khi lưu
-                clean_chunk = chunk
-                for info in images_list: clean_chunk = clean_chunk.replace(f"[IMG_REF_{info['index']}]", "")
-                if clean_chunk.strip():
-                    chunks.append({"text": clean_chunk.strip(), "image_url": found_url, "page": 0})
+                # Tìm danh sách ảnh trong chunk
+                import re
+                found_imgs = re.findall(r'!\[image\]\((.*?)\)', chunk)
+                img_urls = found_imgs if found_imgs else []
+                if chunk.strip():
+                    chunks.append({"text": chunk.strip(), "images": img_urls, "page": 1})
 
         # --- GIAI ĐOẠN LƯU TRỮ VECTOR ---
         if not chunks:
@@ -223,11 +379,14 @@ def process_document(kb_qclient, file_id: int, group_id: int, file_path: str):
                     id=str(uuid.uuid4()),
                     vector=emb,
                     payload={
-                        "file_id": file_id,
-                        "group_id": group_id,
                         "text": batch[j]["text"],
-                        "image_url": batch[j]["image_url"],
-                        "page": batch[j]["page"]
+                        "metadata": {
+                            "source": file_name,
+                            "file_id": file_id,
+                            "group_id": group_id,
+                            "images": batch[j]["images"],
+                            "page": batch[j]["page"]
+                        }
                     }
                 ))
             # Đẩy dữ liệu vào Qdrant
@@ -247,12 +406,14 @@ class ProcessRequest(BaseModel):
     file_id: int
     group_id: int
     file_path: str
+    file_name: Optional[str] = None
 
 class DeleteRequest(BaseModel): file_id: int
 class DeleteGroupRequest(BaseModel): group_id: int
 class SearchRequest(BaseModel): 
     query: str
     top_k: int = 5
+    group_id: Optional[int] = None
 
 # --- CÁC ROUTE API (ENDPOINTS) ---
 
@@ -260,7 +421,7 @@ class SearchRequest(BaseModel):
 def process_rag(req: ProcessRequest, background_tasks: BackgroundTasks, request: Request):
     """Tiếp nhận file kiến thức và bắt đầu quy trình trích xuất ngầm (Background Task)."""
     kb_qclient = request.app.state.kb_qclient
-    background_tasks.add_task(process_document, kb_qclient, req.file_id, req.group_id, req.file_path)
+    background_tasks.add_task(process_document, kb_qclient, req.file_id, req.group_id, req.file_path, req.file_name)
     return {"status": "started"}
 
 @rag_router.post("/delete", summary="Xóa kiến thức của 1 file")
@@ -317,12 +478,44 @@ def search_rag(req: SearchRequest, request: Request):
     """Tìm kiếm kến thức dùng kết hợp Vector Search và Reranking (Jina AI)."""
     kb_qclient = request.app.state.kb_qclient
     try:
+        # Bước 0: Xác định danh sách ID các file đang active
+        active_file_ids = []
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            if req.group_id is not None:
+                cur.execute("SELECT id FROM knowledge_files WHERE group_id = %s AND active = TRUE", (req.group_id,))
+            else:
+                cur.execute("SELECT id FROM knowledge_files WHERE active = TRUE")
+            active_file_ids = [row[0] for row in cur.fetchall()]
+            cur.close()
+            conn.close()
+        except Exception as db_err:
+            logging.error(f"Lỗi lấy danh sách file active từ DB: {db_err}")
+            # Nếu lỗi DB thì lấy hết (không lọc ID) để tránh làm gián đoạn dịch vụ
+            active_file_ids = None
+        
         # Bước 1: Chuyển câu hỏi sang vector
         query_emb = get_embeddings([req.query])[0]
         
-        # Bước 2: Tìm kiếm sơ bộ trong Qdrant (lấy 15 kết quả tiềm năng nhất)
+        # Bước 2: Tìm kiếm sơ bộ trong Qdrant
+        # Áp dụng bộ lọc active file_id và group_id
+        conditions = []
+        if active_file_ids is not None:
+            if not active_file_ids: return {"results": []} # Không có file nào active
+            conditions.append(FieldCondition(key="file_id", match=MatchAnyValue(any=active_file_ids)))
+            
+        if req.group_id is not None:
+            conditions.append(FieldCondition(key="group_id", match=MatchValue(value=req.group_id)))
+            
+        query_filter = Filter(must=conditions) if conditions else None
+
         search_result = kb_qclient.query_points(
-            collection_name=COLLECTION_NAME, query=query_emb, limit=15, with_payload=True,
+            collection_name=COLLECTION_NAME, 
+            query=query_emb, 
+            limit=20, # Tăng limit để sau rerank vẫn đủ top_k
+            with_payload=True,
+            query_filter=query_filter
         ).points
         
         if not search_result: return {"results": []}
@@ -344,13 +537,13 @@ def search_rag(req: SearchRequest, request: Request):
                 hit = search_result[item["index"]]
                 results.append({
                     "text": hit.payload.get("text"),
-                    "image_url": hit.payload.get("image_url"),
+                    "metadata": hit.payload.get("metadata", {}),
                     "score": item["relevance_score"]
                 })
             return {"results": results}
         
         # Bước 4: Trả về kết quả fallback nếu Reranker lỗi
-        return {"results": [{"text": h.payload.get("text"), "image_url": h.payload.get("image_url")} for h in search_result[:req.top_k]]}
+        return {"results": [{"text": h.payload.get("text"), "metadata": h.payload.get("metadata", {})} for h in search_result[:req.top_k]]}
     except Exception as e:
         logging.error(f"Lỗi tìm kiếm RAG: {e}")
         raise HTTPException(status_code=500, detail=str(e))

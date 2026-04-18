@@ -158,7 +158,7 @@ export function AdminLogsDrawer({ open, onOpenChange, logId, initialLog }: Admin
                       <span>{log.level === 'error' ? 'Error Log' : 'Context Data'}</span>
                       <button
                         onClick={() => copyToClipboard(log.details || "")}
-                        className="flex items-center gap-1.5 text-zinc-400 hover:text-violet-500 transition-colors"
+                        className="flex items-center gap-1.5 text-zinc-400 hover:text-indigo-500 transition-colors"
                         title="Copy details"
                       >
                         {copied ? (

@@ -26,6 +26,7 @@ import {
   useAuiState,
   useAssistantRuntime
 } from "@assistant-ui/react";
+import { useSession } from "next-auth/react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -53,8 +54,12 @@ import {
 import type { FC } from "react";
 
 export const Thread: FC = () => {
+  const runtime = useAssistantRuntime();
+  const threadId = useAuiState((s) => (s as any).thread.id || (s as any).thread.remoteId || (s as any).thread.externalId);
+
   return (
     <ThreadPrimitive.Root
+      key={threadId}
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
       style={{
         ["--thread-max-width" as string]: "44rem",
@@ -106,6 +111,7 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
+  const { data: session } = useSession();
   const [title, setTitle] = useState("Xin chào!");
   const [subtitle, setSubtitle] = useState("Tôi có thể giúp gì cho bạn không?");
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -121,12 +127,25 @@ const ThreadWelcome: FC = () => {
       .catch(console.error);
   }, []);
 
+  const user = session?.user as any;
+  const isGuest = user?.role === "guest";
+  const userName = user?.name;
+
+  let displayTitle: React.ReactNode = title;
+  if (!isGuest && userName && title.includes("Xin chào!")) {
+    displayTitle = (
+      <>
+        Xin chào <span className="text-indigo-600 dark:text-indigo-400 font-bold tracking-tight">{userName}</span> !
+      </>
+    );
+  }
+
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
-          <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
-            {title}
+          <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-3xl duration-200">
+            {displayTitle}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
             {subtitle}
@@ -162,7 +181,26 @@ const Composer: FC = () => {
   const runtime = useAssistantRuntime();
 
   const [chatMode, setChatMode] = useState<"normal" | "search" | "translate">("normal");
-  const [targetLang, setTargetLang] = useState<{ id: string, name: string, emoji: string }>({ id: "en", name: "English", emoji: "🇺🇸" });
+  const [targetLang, setTargetLang] = useState<{ id: string, name: string, emoji: string }>({ id: "vi", name: "Vietnamese", emoji: "🇻🇳" });
+  const [knowledgeGroups, setKnowledgeGroups] = useState<any[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
+
+  useEffect(() => {
+    if (chatMode === "search") {
+      fetch("/api/knowledge/groups")
+        .then(r => r.json())
+        .then(d => {
+          if (d.groups) {
+            setKnowledgeGroups(d.groups);
+            if (d.groups.length > 0 && !selectedGroup) {
+              // Mặc định chọn danh mục đầu tiên
+              setSelectedGroup(d.groups[0]);
+            }
+          }
+        })
+        .catch(console.error);
+    }
+  }, [chatMode]);
 
   const resetMode = () => setChatMode("normal");
 
@@ -170,95 +208,121 @@ const Composer: FC = () => {
     const text = runtime.thread.composer.getState().text.trim();
     if (!text) return;
 
-    let finalContent = text;
-    if (chatMode === "search") finalContent = `[Search] ${text}`;
-    else if (chatMode === "translate") finalContent = `[Translate ${targetLang.name}]:\n${text}`;
-
     runtime.thread.append({
       role: "user",
-      content: [{ type: "text", text: finalContent }]
+      content: [{ type: "text", text: text }],
+      metadata: {
+        custom: {
+          chatMode,
+          groupId: chatMode === "search" ? selectedGroup?.id : undefined,
+          targetLang: chatMode === "translate" ? targetLang : undefined
+        }
+      } as any
     });
     runtime.thread.composer.setText("");
   };
 
   return (
     <ComposerPrimitive.Root className="aui-composer-root flex w-full flex-col gap-2">
-        {/* === COMPOSER DROPZONE === */}
-        <ComposerPrimitive.AttachmentDropzone asChild>
-          <div
-            data-slot="composer-shell"
-            className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
-          >
-            <ComposerAttachments />
+      {/* === COMPOSER DROPZONE === */}
+      <ComposerPrimitive.AttachmentDropzone asChild>
+        <div
+          data-slot="composer-shell"
+          className="flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-background p-(--composer-padding) transition-shadow focus-within:border-ring/75 focus-within:ring-2 focus-within:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50"
+        >
+          <ComposerAttachments />
 
-            {/* === MODE INDICATOR === */}
-            {chatMode !== "normal" && (
-              <div className="flex items-center gap-2 px-2 py-1 mx-1 mt-1 bg-violet-500/5 border border-violet-500/20 rounded-lg w-fit animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-violet-500 uppercase tracking-widest">
-                  {chatMode === "search" && <Library className="size-3" />}
-                  {chatMode === "translate" && <LanguagesIcon className="size-3" />}
-                  <span>{chatMode}</span>
-                  {chatMode === "translate" && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="flex items-center gap-1 ml-1 pl-2 border-l border-violet-500/30 hover:text-violet-600 transition-colors uppercase">
-                          {targetLang.emoji} {targetLang.name}
-                          <ChevronRightIcon className="size-2.5 rotate-90" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-40">
-                        {[
-                          { id: "en", name: "English", emoji: "🇺🇸" },
-                          { id: "ko", name: "Korean", emoji: "🇰🇷" },
-                          { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
-                          { id: "zh", name: "Chinese", emoji: "🇨🇳" },
-                          { id: "ja", name: "Japanese", emoji: "🇯🇵" },
-                          { id: "th", name: "Thai", emoji: "🇹🇭" }
-                        ].map((l) => (
-                          <DropdownMenuItem
-                            key={l.id}
-                            onClick={() => setTargetLang(l)}
-                            className="flex items-center gap-2 text-xs"
-                          >
-                            <span>{l.emoji}</span>
-                            <span>{l.name}</span>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-                <button onClick={resetMode} className="ml-1 p-0.5 hover:bg-red-500/10 rounded-full transition-colors text-zinc-400 hover:text-red-500">
-                  <X className="size-3" />
-                </button>
+          {/* === MODE INDICATOR === */}
+          {chatMode !== "normal" && (
+            <div className="flex items-center gap-2 px-2 py-1 mx-1 mt-1 bg-indigo-500/5 border border-indigo-500/20 rounded-lg w-fit animate-in fade-in slide-in-from-top-1 duration-200 select-none">
+              <div className="flex items-center gap-1.5 text-[12px] font-bold text-indigo-500 uppercase tracking-widest">
+                {chatMode === "search" && <Library className="size-3" />}
+                {chatMode === "translate" && <LanguagesIcon className="size-3" />}
+                <span>{chatMode}</span>
+                {chatMode === "search" && knowledgeGroups.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="flex items-center gap-1 ml-1 pl-2 border-l border-indigo-500/30 hover:text-indigo-600 transition-colors uppercase cursor-pointer select-none">
+                        {selectedGroup?.name || "All Categories"}
+                        <ChevronRightIcon className="size-2.5 rotate-90" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="top" sideOffset={12} align="start" className="w-56 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
+                      {knowledgeGroups.map((g) => (
+                        <DropdownMenuItem
+                          key={g.id}
+                          onClick={() => setSelectedGroup(g)}
+                          className="flex items-center gap-2 text-sm cursor-pointer select-none"
+                        >
+                          <Library className={cn("size-3.5", selectedGroup?.id === g.id ? "text-indigo-500" : "text-zinc-400")} />
+                          <span className="truncate">{g.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {chatMode === "translate" && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="flex items-center gap-1 ml-1 pl-2 border-l border-indigo-500/30 hover:text-indigo-600 transition-colors uppercase cursor-pointer select-none">
+                        {targetLang.emoji} {targetLang.name}
+                        <ChevronRightIcon className="size-2.5 rotate-90" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="top" sideOffset={12} align="start" className="w-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                      {[
+                        { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
+                        { id: "en", name: "English", emoji: "🇺🇸" },
+                        { id: "ko", name: "Korean", emoji: "🇰🇷" },
+                        { id: "hi", name: "Hindi", emoji: "🇮🇳" },
+                        { id: "zh", name: "Chinese", emoji: "🇨🇳" },
+                        { id: "ja", name: "Japanese", emoji: "🇯🇵" },
+                        { id: "th", name: "Thai", emoji: "🇹🇭" }
+                      ].map((l) => (
+                        <DropdownMenuItem
+                          key={l.id}
+                          onClick={() => setTargetLang(l)}
+                          className="flex items-center gap-2 text-sm cursor-pointer select-none"
+                        >
+                          <span>{l.emoji}</span>
+                          <span>{l.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
-            )}
+              <button onClick={resetMode} className="ml-1 p-0.5 hover:bg-red-500/10 rounded-full transition-colors text-zinc-400 hover:text-red-500 cursor-pointer select-none">
+                <X className="size-3" />
+              </button>
+            </div>
+          )}
 
-            <ComposerPrimitive.Input
-              placeholder="Ask anything..."
-              className="aui-composer-input max-h-[40vh] overflow-y-auto min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80 focus:outline-none scrollbar-thin"
-              rows={1}
-              autoFocus
-              aria-label="Message input"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
-            <ComposerAction
-              onModeSelect={(m, l) => {
-                setChatMode(m);
-                if (l) setTargetLang(l);
-              }}
-              onSend={handleSend}
-              chatMode={chatMode}
-              resetMode={resetMode}
-            />
-          </div>
-        </ComposerPrimitive.AttachmentDropzone>
-      </ComposerPrimitive.Root>
+          <ComposerPrimitive.Input
+            placeholder="Ask anything..."
+            className="aui-composer-input max-h-[40vh] overflow-y-auto min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80 focus:outline-none scrollbar-thin"
+            rows={1}
+            autoFocus
+            aria-label="Message input"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+          />
+          <ComposerAction
+            onModeSelect={(m, l) => {
+              setChatMode(m);
+              if (l) setTargetLang(l);
+            }}
+            onSend={handleSend}
+            chatMode={chatMode}
+            resetMode={resetMode}
+          />
+        </div>
+      </ComposerPrimitive.AttachmentDropzone>
+    </ComposerPrimitive.Root>
   );
 };
 
@@ -278,7 +342,7 @@ const ComposerAction: FC<{
         <TooltipIconButton
           tooltip="Internal Search (RAG)"
           onClick={() => onModeSelect("search")}
-          className={cn("size-8 rounded-full transition-all", chatMode === "search" ? "bg-violet-500 text-white hover:bg-violet-600" : "text-muted-foreground hover:bg-muted")}
+          className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "search" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
         >
           <Library className="size-4" />
         </TooltipIconButton>
@@ -286,7 +350,7 @@ const ComposerAction: FC<{
         <TooltipIconButton
           tooltip="Translate Mode"
           onClick={() => onModeSelect("translate")}
-          className={cn("size-8 rounded-full transition-all", chatMode === "translate" ? "bg-violet-500 text-white hover:bg-violet-600" : "text-muted-foreground hover:bg-muted")}
+          className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "translate" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
         >
           <LanguagesIcon className="size-4" />
         </TooltipIconButton>
@@ -478,7 +542,7 @@ const UserActionBar: FC = () => {
     <ActionBarPrimitive.Root
       hideWhenRunning
       autohide="not-last"
-      className="aui-user-action-bar-root flex flex-row items-end"
+      className="aui-user-action-bar-root flex flex-row items-end gap-1"
     >
       <ActionBarPrimitive.Copy asChild>
         <TooltipIconButton tooltip="Copy">

@@ -44,26 +44,29 @@ const ToolButton: FC<{
 // ─── Modal ─────────────────────────────────────────────────────────────────────
 const DiagramModal: FC<{ svgHtml: string; onClose: () => void }> = ({ svgHtml, onClose }) => {
   const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const zoomContainerRef = useRef<HTMLDivElement>(null);
 
+  // Xử lý zoom bằng con lăn chuột
   useEffect(() => {
     const el = zoomContainerRef.current;
     if (!el) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      setScale(prev => Math.min(Math.max(prev - e.deltaY * 0.001, 0.3), 5));
+      setScale(prev => Math.min(Math.max(prev - e.deltaY * 0.002, 0.5), 10));
     };
 
-    // Use passive: false to allow e.preventDefault()
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
   }, []);
 
+  // Xử lý phím Escape và khóa cuộn trang
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
-    // Khóa cuộn trang khi mở modal
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", handler);
@@ -71,41 +74,89 @@ const DiagramModal: FC<{ svgHtml: string; onClose: () => void }> = ({ svgHtml, o
     };
   }, [onClose]);
 
+  // Logic bắt đầu kéo
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+  };
+
+  // Logic đang kéo
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  // Logic dừng kéo
+  const handleMouseUp = () => setIsDragging(false);
+
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm overscroll-none"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md overscroll-none p-4 md:p-8"
       onClick={onClose}
     >
       <div
-        className="relative bg-background rounded-2xl shadow-2xl border border-border w-[95vw] h-[75vh] flex flex-col overflow-hidden"
+        className="relative bg-background rounded-lg shadow-2xl border border-border w-full h-full max-w-7xl flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border shrink-0">
-          <span className="text-sm font-medium text-muted-foreground">Diagram Preview</span>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0 bg-muted/30">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground uppercase tracking-wider">Preview Diagram</span>
+            <span className="text-xs text-muted-foreground ml-2 px-1.5 py-0.5 bg-accent rounded">
+              {Math.round(scale * 100)}%
+            </span>
+          </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-sm hover:bg-accent hover:text-accent-foreground text-muted-foreground transition-colors"
-            title="Close"
+            className="p-1 rounded-full hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-all duration-200"
+            title="Đóng (Esc)"
           >
             <X className="size-4" />
           </button>
         </div>
 
+        {/* Cửa sổ hiển thị biểu đồ */}
         <div
           ref={zoomContainerRef}
-          className="flex-1 overflow-hidden flex items-center justify-center cursor-zoom-in select-none"
+          className={cn(
+            "flex-1 overflow-hidden relative select-none bg-dot-pattern bg-[length:24px_24px]",
+            isDragging ? "cursor-grabbing" : "cursor-grab"
+          )}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
         >
           <div
-            style={{ transform: `scale(${scale})`, transformOrigin: "center center", transition: "transform 0.1s ease" }}
+            className="absolute inset-0 flex items-center justify-center"
+            style={{
+              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              transformOrigin: "center center",
+              transition: isDragging ? "none" : "transform 0.1s ease-out"
+            }}
             dangerouslySetInnerHTML={{
-              __html: `<style>svg { width: 100%; height: 100%; max-height: 65vh; }</style>` + svgHtml
+              __html: `<style>svg { width: auto; height: auto; max-width: 95%; max-height: 95%; outline: none; }</style>` + svgHtml
             }}
           />
         </div>
 
-        <p className="text-xs text-center text-muted-foreground pb-2 shrink-0">
-          Scroll to zoom · Click outside to close
-        </p>
+        {/* Footer hướng dẫn */}
+        <div className="px-4 py-2 border-t border-border bg-muted/20 shrink-0">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[11px] font-medium text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="px-1 py-0.5 bg-accent border border-border rounded shadow-sm text-foreground">Cuộn chuột</span> Zoom in/out
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="px-1 py-0.5 bg-accent border border-border rounded shadow-sm text-foreground">Giữ chuột</span> Kéo để di chuyển
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="px-1 py-0.5 bg-accent border border-border rounded shadow-sm text-foreground">Esc</span> Thoát
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -207,7 +258,7 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
               <Download className="size-3.5" />
             </ToolButton>
             <ToolButton onClick={() => setModalOpen(true)} title="Maximize">
-              <Maximize2 className="size-3.5" />
+              <Maximize2 className="size-3" />
             </ToolButton>
           </div>
         )}

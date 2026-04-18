@@ -32,8 +32,8 @@ function WeeklyBarChart({ data }: { data: WeeklyMsg[] }) {
       {filled.map(({ day, count }) => (
         <div key={day} className="flex-1 flex flex-col items-center gap-1">
           <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums">{count || ""}</span>
-          <div className="w-full rounded-t-md bg-violet-400/30 dark:bg-violet-500/20 relative overflow-hidden" style={{ height: `${Math.max((count / max) * 120, count > 0 ? 6 : 2)}px` }}>
-            <div className="absolute inset-0 bg-gradient-to-t from-violet-600 to-violet-400 dark:from-violet-500 dark:to-violet-300 opacity-80" />
+          <div className="w-full rounded-t-md bg-indigo-400/30 dark:bg-indigo-500/20 relative overflow-hidden" style={{ height: `${Math.max((count / max) * 120, count > 0 ? 6 : 2)}px` }}>
+            <div className="absolute inset-0 bg-gradient-to-t from-indigo-600 to-indigo-400 dark:from-indigo-500 dark:to-indigo-300 opacity-80" />
           </div>
           <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{day}</span>
         </div>
@@ -64,15 +64,15 @@ export default function AdminDashboardPage() {
   }, []);
 
   const statCards = [
-    { label: "Total Users", value: stats.usersCount, color: "violet", Icon: Users },
-    { label: "Online Now", value: stats.onlineCount, color: "emerald", Icon: Wifi },
+    { label: "Total Users", value: stats.usersCount, color: "indigo_primary", Icon: Users },
+    { label: "Online Now", value: stats.onlineCount, color: "indigo", Icon: Wifi },
     { label: "Total Threads", value: stats.threadsCount, color: "blue", Icon: MessagesSquare },
     { label: "Total Messages", value: stats.messagesCount, color: "amber", Icon: MessageCircle },
   ];
 
   const colorMap: Record<string, string> = {
-    violet: "from-violet-100 dark:from-violet-600/20 border-violet-200 dark:border-violet-500/30 text-violet-600 dark:text-violet-300 bg-violet-500/20 text-violet-400",
-    emerald: "from-emerald-100 dark:from-emerald-600/20 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 text-emerald-400",
+    indigo_primary: "from-indigo-100 dark:from-indigo-600/20 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-300 bg-indigo-500/20 text-indigo-400",
+    indigo: "from-indigo-100 dark:from-indigo-600/20 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-300 bg-indigo-500/20 text-indigo-400",
     blue: "from-blue-100 dark:from-blue-600/20 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-300 bg-blue-500/20 text-blue-400",
     amber: "from-amber-100 dark:from-amber-600/20 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-300 bg-amber-500/20 text-amber-400",
   };
@@ -148,9 +148,9 @@ export default function AdminDashboardPage() {
                   <span className={`text-sm font-bold w-5 text-right ${idx === 0 ? "text-amber-500" : idx === 1 ? "text-zinc-400" : idx === 2 ? "text-amber-700 dark:text-amber-600" : "text-zinc-400"}`}>
                     {idx + 1}
                   </span>
-                  <Avatar className="h-7 w-7 shrink-0">
+                  <Avatar className="h-7 w-7 shrink-0 border border-zinc-200 dark:border-white/5 shadow-sm">
                     <AvatarImage src={u.avatar || ""} />
-                    <AvatarFallback className="bg-violet-900/50 text-violet-300 text-xs">
+                    <AvatarFallback className="bg-indigo-500 dark:bg-indigo-600 text-white font-bold text-sm">
                       {(u.user_name || "U").charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
@@ -158,7 +158,7 @@ export default function AdminDashboardPage() {
                     <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">{u.user_name || "Unknown"}</p>
                     <p className="text-xs text-zinc-500 truncate">{u.email}</p>
                   </div>
-                  <span className="text-sm font-semibold text-violet-600 dark:text-violet-300 tabular-nums">{u.msg_count}</span>
+                  <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">{u.msg_count}</span>
                 </li>
               ))}
               </ol>

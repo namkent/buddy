@@ -1,51 +1,58 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { dbConnection } from "@/lib/db";
+import { requireAuth, errorResponse, successResponse } from "@/lib/api-utils";
 import bcrypt from "bcryptjs";
 
+/**
+ * [POST] Đổi mật khẩu người dùng
+ * Hỗ trợ cả người dùng thường và người dùng đăng nhập qua SSO (đặt mật khẩu lần đầu)
+ */
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const { user: sessionUser } = await requireAuth();
     const { email, oldPassword, newPassword } = await req.json();
 
-    const targetEmail = email || session?.user?.email;
+    // Xác định email mục tiêu (ưu tiên từ body hoặc lấy từ session)
+    const targetEmail = email || sessionUser?.email;
 
     if (!targetEmail) {
-      return NextResponse.json({ error: "Vui lòng cung cấp email hoặc đăng nhập để đổi mật khẩu" }, { status: 401 });
+      return errorResponse("Vui lòng cung cấp email hoặc đăng nhập để tiếp tục", 401);
     }
 
+    // Kiểm tra độ dài mật khẩu mới
     if (!newPassword || newPassword.length < 5) {
-      return NextResponse.json({ error: "Mật khẩu mới phải có ít nhất 5 ký tự" }, { status: 400 });
+      return errorResponse("Mật khẩu mới phải có ít nhất 5 ký tự", 400);
     }
 
+    // Tìm kiếm người dùng trong DB
     const dbUser = await dbConnection.users.findByEmail(targetEmail);
     if (!dbUser) {
-      return NextResponse.json({ error: "Không tìm thấy tài khoản" }, { status: 404 });
+      return errorResponse("Không tìm thấy tài khoản người dùng", 404);
     }
 
-    // Nếu người dùng đã có mật khẩu trước đó, bắt buộc nhập đúng mật khẩu cũ
+    // Trình tự kiểm tra mật khẩu cũ
     if (dbUser.password_hash) {
       if (!oldPassword) {
-        return NextResponse.json({ error: "Vui lòng nhập mật khẩu cũ" }, { status: 400 });
+        return errorResponse("Vui lòng nhập mật khẩu hiện tại", 400);
       }
       const isMatch = await bcrypt.compare(oldPassword, dbUser.password_hash);
       if (!isMatch) {
-         return NextResponse.json({ error: "Mật khẩu cũ không chính xác" }, { status: 400 });
+         return errorResponse("Mật khẩu hiện tại không chính xác", 400);
       }
     } else {
-      // Nếu chưa có password (SSO), bắt buộc phải có session đang login bằng email đó thì mới cho set pass
-      if (!session || session.user?.email !== targetEmail) {
-        return NextResponse.json({ error: "Bạn phải đăng nhập qua SSO để tự đặt mật khẩu mới" }, { status: 403 });
+      // Trường hợp tài khoản SSO chưa có mật khẩu: Yêu cầu phải đang login chính tài khoản đó
+      if (!sessionUser || sessionUser.email !== targetEmail) {
+        return errorResponse("Bạn phải đăng nhập qua SSO để thiết lập mật khẩu lần đầu", 403);
       }
     }
 
+    // Mã hóa mật khẩu mới và cập nhật vào DB
     const newHash = await bcrypt.hash(newPassword, 10);
     await dbConnection.users.updatePassword(targetEmail, newHash);
 
-    return NextResponse.json({ success: true, message: "Cập nhật mật khẩu thành công!" });
+    return successResponse({ success: true, message: "Đổi mật khẩu thành công!" });
   } catch (error) {
-    console.error("Đổi pass thất bại:", error);
-    return NextResponse.json({ error: "Lỗi hệ thống khi đổi mật khẩu" }, { status: 500 });
+    console.error("Change password fail:", error);
+    return errorResponse("Lỗi hệ thống khi đổi mật khẩu", 500);
   }
 }

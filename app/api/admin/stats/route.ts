@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { dbConnection } from "@/lib/db";
+import { requireAdmin, errorResponse } from "@/lib/api-utils";
 
+/**
+ * [GET] Lấy số liệu thống kê hệ thống (Người dùng, Hội thoại, Tin nhắn, Chart)
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  
-  if (!session || (session.user as any).role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   try {
     const stats = await dbConnection.users.getStats();
     return NextResponse.json(stats);
   } catch (error) {
-    console.error("Failed to get stats:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    console.error("Fetch stats fail:", error);
+    return errorResponse("Lỗi hệ thống khi tải thống kê", 500);
   }
 }

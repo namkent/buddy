@@ -92,6 +92,7 @@ export const dbConnection = {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         description TEXT,
+        active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -100,6 +101,7 @@ export const dbConnection = {
         group_id INTEGER REFERENCES knowledge_groups(id) ON DELETE CASCADE,
         file_name TEXT NOT NULL,
         file_path TEXT NOT NULL,
+        active BOOLEAN DEFAULT TRUE,
         status TEXT DEFAULT 'pending',
         error_message TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -139,6 +141,8 @@ export const dbConnection = {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP WITH TIME ZONE');
       // Add error_message to knowledge_files
       await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS error_message TEXT');
+      await pool.query('ALTER TABLE knowledge_groups ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE');
+      await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE');
     } catch(e) {}
   },
 
@@ -350,22 +354,25 @@ export const dbConnection = {
   },
 
   knowledge: {
-    async createGroup(name: string, description: string = '') {
+    async createGroup(name: string, description: string = '', active: boolean = true) {
       const res = await pool.query(
-        'INSERT INTO knowledge_groups (name, description) VALUES ($1, $2) RETURNING *',
-        [name, description]
+        'INSERT INTO knowledge_groups (name, description, active) VALUES ($1, $2, $3) RETURNING *',
+        [name, description, active]
       );
       return res.rows[0];
     },
-    async getGroups() {
-      const res = await pool.query('SELECT * FROM knowledge_groups ORDER BY created_at DESC');
+    async getGroups(onlyActive: boolean = false) {
+      const where = onlyActive ? 'WHERE active = TRUE' : '';
+      const res = await pool.query(`SELECT * FROM knowledge_groups ${where} ORDER BY created_at DESC`);
       return res.rows;
     },
-    async getGroupsWithCount() {
+    async getGroupsWithCount(onlyActive: boolean = false) {
+      const where = onlyActive ? 'WHERE g.active = TRUE' : '';
       const res = await pool.query(`
         SELECT g.*, COUNT(f.id)::int AS file_count
         FROM knowledge_groups g
         LEFT JOIN knowledge_files f ON f.group_id = g.id
+        ${where}
         GROUP BY g.id
         ORDER BY g.created_at DESC
       `);
@@ -374,7 +381,7 @@ export const dbConnection = {
     async deleteGroup(id: number) {
       await pool.query('DELETE FROM knowledge_groups WHERE id = $1', [id]);
     },
-    async updateGroup(id: number, data: { name?: string; description?: string }) {
+    async updateGroup(id: number, data: { name?: string; description?: string; active?: boolean }) {
       const fields = [];
       const values = [];
       let i = 1;
@@ -385,6 +392,10 @@ export const dbConnection = {
       if (data.description !== undefined) {
         fields.push(`description = $${i++}`);
         values.push(data.description);
+      }
+      if (data.active !== undefined) {
+        fields.push(`active = $${i++}`);
+        values.push(data.active);
       }
       if (fields.length === 0) return;
       values.push(id);
@@ -411,10 +422,21 @@ export const dbConnection = {
         await pool.query('UPDATE knowledge_files SET status = $1 WHERE id = $2', [status, id]);
       }
     },
-    async updateFile(id: number, data: { file_name?: string }) {
-      if (data.file_name) {
-        await pool.query('UPDATE knowledge_files SET file_name = $1 WHERE id = $2', [data.file_name, id]);
+    async updateFile(id: number, data: { file_name?: string; active?: boolean }) {
+      const fields = [];
+      const values = [];
+      let i = 1;
+      if (data.file_name !== undefined) {
+        fields.push(`file_name = $${i++}`);
+        values.push(data.file_name);
       }
+      if (data.active !== undefined) {
+        fields.push(`active = $${i++}`);
+        values.push(data.active);
+      }
+      if (fields.length === 0) return;
+      values.push(id);
+      await pool.query(`UPDATE knowledge_files SET ${fields.join(', ')} WHERE id = $${i}`, values);
     }
   },
 

@@ -7,8 +7,9 @@ import {
   FileText, UploadCloud, XCircle, Clock, CheckCircle2,
   Calendar, Search, Filter, Info, Mail, AlertCircle,
   FileCode, FileJson, FileType, FileSignature, FileArchive, Edit2,
-  RefreshCw
+  RefreshCw, Eye, EyeOff
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { AdminLogsDrawer } from "@/components/admin/logs-drawer";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ type FileStatus = "pending" | "processing" | "completed" | "error" | "error_trig
 const STATUS_CONFIG: Record<FileStatus, { label: string; color: string; icon: React.ReactNode }> = {
   pending: { label: "Pending", color: "text-amber-600", icon: <Clock className="size-3.5" /> },
   processing: { label: "Processing", color: "text-blue-600", icon: <Loader2 className="size-3.5 animate-spin" /> },
-  completed: { label: "Completed", color: "text-emerald-600", icon: <CheckCircle2 className="size-3.5" /> },
+  completed: { label: "Completed", color: "text-indigo-600", icon: <CheckCircle2 className="size-3.5" /> },
   error: { label: "System Error", color: "text-red-600", icon: <XCircle className="size-3.5" /> },
   error_triggering: { label: "Connection Error", color: "text-red-600", icon: <XCircle className="size-3.5" /> },
 };
@@ -79,6 +80,11 @@ export default function KnowledgeBasePage() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const selectedGroupRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    selectedGroupRef.current = selectedGroupId;
+  }, [selectedGroupId]);
 
   useEffect(() => {
     fetchGroups();
@@ -99,9 +105,12 @@ export default function KnowledgeBasePage() {
       const data = await res.json();
       if (data.groups) {
         setGroups(data.groups);
-        if (data.groups.length > 0 && !selectedGroupId) {
-          setSelectedGroupId(data.groups[0].id);
-        }
+        setSelectedGroupId(current => {
+          if (!current && data.groups.length > 0) {
+            return data.groups[0].id;
+          }
+          return current;
+        });
       }
     } catch { toast.error("Failed to load categories"); }
     finally { setLoadingGroups(false); }
@@ -125,8 +134,9 @@ export default function KnowledgeBasePage() {
     if (hasPending) {
       if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(async () => {
-        if (!selectedGroupId) return;
-        const res = await fetch(`/api/admin/knowledge/groups/${selectedGroupId}/files`);
+        const currentId = selectedGroupRef.current;
+        if (!currentId) return;
+        const res = await fetch(`/api/admin/knowledge/groups/${currentId}/files`);
         const data = await res.json();
         if (data.files) {
           setFiles(data.files);
@@ -147,7 +157,7 @@ export default function KnowledgeBasePage() {
       const res = await fetch("/api/admin/knowledge/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newGroupName, description: newGroupDesc }),
+        body: JSON.stringify({ name: newGroupName, description: newGroupDesc, active: true }),
       });
       const data = await res.json();
       if (data.group) {
@@ -233,41 +243,59 @@ export default function KnowledgeBasePage() {
     finally { setSavingContent(false); }
   };
 
-  const handleUpdateGroup = async () => {
-    if (!editingGroup || !renamingGroupName.trim()) return;
+  const handleUpdateFile = async (id: number, data: { file_name?: string, active?: boolean }) => {
     try {
-      const res = await fetch(`/api/admin/knowledge/groups/${editingGroup.id}`, {
+      const res = await fetch(`/api/admin/knowledge/files/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        setFiles(prev => prev.map(f => f.id === id ? { ...f, ...data } : f));
+        if (data.active !== undefined) {
+          toast.success(data.active ? "Document enabled" : "Document disabled");
+        } else {
+          toast.success("Document updated");
+          setEditingFile(null);
+        }
+      }
+    } catch { toast.error("Failed to update document"); }
+  };
+
+  const handleUpdateGroup = async (id?: number, statusUpdate?: boolean) => {
+    const targetId = id || editingGroup?.id;
+    if (!targetId) return;
+
+    // Nếu là cập nhật nhanh trạng thái active (nút gạt)
+    if (statusUpdate !== undefined) {
+      try {
+        const res = await fetch(`/api/admin/knowledge/groups/${targetId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ active: statusUpdate }),
+        });
+        if (res.ok) {
+          setGroups(prev => prev.map(g => g.id === targetId ? { ...g, active: statusUpdate } : g));
+          toast.success(statusUpdate ? "Category visible to users" : "Category hidden from users");
+        }
+      } catch { toast.error("Failed to update status"); }
+      return;
+    }
+
+    // Cập nhật thông tin qua Dialog
+    if (!renamingGroupName.trim()) return;
+    try {
+      const res = await fetch(`/api/admin/knowledge/groups/${targetId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renamingGroupName, description: renamingGroupDesc }),
       });
       if (res.ok) {
-        setGroups(prev => prev.map(g => g.id === editingGroup.id ? { ...g, name: renamingGroupName, description: renamingGroupDesc } : g));
+        setGroups(prev => prev.map(g => g.id === targetId ? { ...g, name: renamingGroupName, description: renamingGroupDesc } : g));
         setEditingGroup(null);
         toast.success("Category updated");
       }
     } catch { toast.error("Failed to update category"); }
-  };
-
-  const handleUpdateFile = async () => {
-    if (!editingFile || !renamingFileTitle.trim()) return;
-    
-    // Giữ nguyên extension gốc
-    const originalExt = editingFile.file_name.split('.').pop();
-    const newName = `${renamingFileTitle}.${originalExt}`;
-    
-    try {
-      const res = await fetch(`/api/admin/knowledge/files/${editingFile.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_name: newName }),
-      });
-      if (res.ok) {
-        setFiles(prev => prev.map(f => f.id === editingFile.id ? { ...f, file_name: newName } : f));
-        setEditingFile(null);
-        toast.success("Document renamed");
-      }
-    } catch { toast.error("Failed to rename document"); }
   };
 
   const getFileIcon = (fileName: string) => {
@@ -278,7 +306,7 @@ export default function KnowledgeBasePage() {
       case 'doc': case 'docx': return <FileType className="size-4 text-indigo-500 shrink-0" />;
       case 'txt': return <FileSignature className="size-4 text-zinc-500 shrink-0" />;
       case 'json': return <FileJson className="size-4 text-amber-500 shrink-0" />;
-      default: return <FileText className="size-4 text-violet-500 shrink-0" />;
+      default: return <FileText className="size-4 text-indigo-500 shrink-0" />;
     }
   };
 
@@ -346,24 +374,24 @@ export default function KnowledgeBasePage() {
     f.file_name.toLowerCase().includes(fileSearch.toLowerCase())
   );
 
-  const selectedGroup = groups.find(g => g.id === selectedGroupId);
+  const selectedGroup = groups.find(g => Number(g.id) === Number(selectedGroupId));
 
   return (
     <div className="flex flex-col h-[calc(100dvh-10rem)] space-y-6 max-w-[1600px] mx-auto w-full">
       {/* Header Area */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white mb-1">Knowledge Base</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white mb-1">Knowledge Base</h1>
           <p className="text-zinc-500 dark:text-zinc-400 text-sm">Manage enterprise knowledge, extract RAG data, and process multi-media content.</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleSyncDatabase} 
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSyncDatabase}
             disabled={isSyncing}
-            className="gap-2 border-zinc-200 dark:border-white/5 shadow-sm text-zinc-500 hover:text-violet-500"
+            className="gap-2 border-zinc-200 dark:border-white/5 shadow-sm text-zinc-500 hover:text-indigo-500"
             title="Clean up orphaned vectors in database"
           >
             <RefreshCw className={cn("size-3.5", isSyncing && "animate-spin")} />
@@ -394,7 +422,7 @@ export default function KnowledgeBasePage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleCreateGroup} disabled={creating} className="bg-violet-600 hover:bg-violet-700">Create</Button>
+                <Button size="sm" onClick={handleCreateGroup} disabled={creating} className="bg-indigo-600 hover:bg-indigo-700">Create</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -417,7 +445,7 @@ export default function KnowledgeBasePage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setEditingGroup(null)}>Cancel</Button>
-                <Button size="sm" onClick={handleUpdateGroup} className="bg-violet-600">Save Changes</Button>
+                <Button size="sm" onClick={() => handleUpdateGroup()} className="bg-indigo-600">Save Changes</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -432,9 +460,9 @@ export default function KnowledgeBasePage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">New Name</label>
                   <div className="flex items-center gap-2">
-                    <Input 
-                      value={renamingFileTitle} 
-                      onChange={e => setRenamingFileTitle(e.target.value)} 
+                    <Input
+                      value={renamingFileTitle}
+                      onChange={e => setRenamingFileTitle(e.target.value)}
                       className="flex-1"
                     />
                     <Badge variant="outline" className="shrink-0 bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 font-mono">
@@ -446,7 +474,16 @@ export default function KnowledgeBasePage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setEditingFile(null)}>Cancel</Button>
-                <Button size="sm" onClick={handleUpdateFile} className="bg-violet-600">Rename</Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const ext = editingFile.file_name.split('.').pop();
+                    handleUpdateFile(editingFile.id, { file_name: `${renamingFileTitle}.${ext}` });
+                  }}
+                  className="bg-indigo-600"
+                >
+                  Save Changes
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -458,24 +495,24 @@ export default function KnowledgeBasePage() {
                 Input Content
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+            <DialogContent className="sm:max-w-[75vw] w-full h-[75vh] flex flex-col">
               <DialogHeader>
                 <DialogTitle>Input Manual Content</DialogTitle>
                 <DialogDescription>Type or paste your content below. You can also include images and links.</DialogDescription>
               </DialogHeader>
-              <div className="flex-1 min-h-0 flex flex-col space-y-4 py-4 overflow-hidden">
+              <div className="flex-1 min-h-0 flex flex-col space-y-4 py-4 px-1 overflow-hidden">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Document Title</label>
-                  <Input 
-                    value={manualTitle} 
-                    onChange={e => setManualTitle(e.target.value)} 
-                    placeholder="e.g. System Troubleshooting Guide" 
+                  <Input
+                    value={manualTitle}
+                    onChange={e => setManualTitle(e.target.value)}
+                    placeholder="e.g. System Troubleshooting Guide"
                   />
                 </div>
                 <div className="flex-1 flex flex-col space-y-1.5 min-h-0">
                   <label className="text-sm font-medium">Content</label>
-                  <TiptapEditor 
-                    content={manualContent} 
+                  <TiptapEditor
+                    content={manualContent}
                     onChange={setManualContent}
                     placeholder="Type or paste your content here..."
                   />
@@ -483,7 +520,7 @@ export default function KnowledgeBasePage() {
               </div>
               <DialogFooter className="pt-2">
                 <Button variant="ghost" size="sm" onClick={() => setIsContentOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleSaveContent} disabled={savingContent || !manualContent.trim()} className="bg-violet-600">
+                <Button size="sm" onClick={handleSaveContent} disabled={savingContent || !manualContent.trim()} className="bg-indigo-600">
                   {savingContent && <Loader2 className="mr-2 size-4 animate-spin" />}
                   Save Content
                 </Button>
@@ -493,7 +530,7 @@ export default function KnowledgeBasePage() {
 
           <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" disabled={!selectedGroupId} className="bg-violet-600 hover:bg-violet-700 text-white shadow-sm gap-2">
+              <Button size="sm" disabled={!selectedGroupId} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm gap-2">
                 <UploadCloud className="size-3.5" />
                 Upload Document
               </Button>
@@ -506,23 +543,23 @@ export default function KnowledgeBasePage() {
               <div className="py-8 text-center overflow-hidden">
                 {!selectedFile ? (
                   <label className="flex flex-col items-center justify-center border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-950 transition-all group">
-                    <Plus className="size-10 text-zinc-300 group-hover:text-violet-500 mb-2" />
+                    <Plus className="size-10 text-zinc-300 group-hover:text-indigo-500 mb-2" />
                     <span className="text-xs font-medium text-zinc-500">Click to select PDF, Word or Txt file</span>
                     <input type="file" className="hidden" accept=".pdf,.docx,.txt" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
                   </label>
                 ) : (
                   <div className="p-4 bg-zinc-50 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 text-left flex items-center gap-3 overflow-hidden">
-                    <div className="bg-violet-500/10 p-2 rounded-lg shrink-0">
-                      <FileText className="size-6 text-violet-500" />
+                    <div className="bg-indigo-500/10 p-2 rounded-lg shrink-0">
+                      <FileText className="size-6 text-indigo-500" />
                     </div>
                     <div className="flex-1 min-w-0 pr-2">
                       <p className="font-semibold text-sm truncate w-full" title={selectedFile.name}>{selectedFile.name}</p>
                       <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight mt-0.5">{formatFileSize(selectedFile.size)}</p>
                     </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="size-8 rounded-full hover:bg-red-500/10 hover:text-red-500 shrink-0" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-full hover:bg-red-500/10 hover:text-red-500 shrink-0"
                       onClick={() => setSelectedFile(null)}
                     >
                       <XCircle className="size-4" />
@@ -532,7 +569,7 @@ export default function KnowledgeBasePage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setIsUploadOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleUpload} disabled={!selectedFile || !selectedGroupId || uploading} className="bg-violet-600">
+                <Button size="sm" onClick={handleUpload} disabled={!selectedFile || !selectedGroupId || uploading} className="bg-indigo-600">
                   {uploading && <Loader2 className="mr-2 size-4 animate-spin" />}
                   Upload
                 </Button>
@@ -543,12 +580,12 @@ export default function KnowledgeBasePage() {
       </div>
 
       {/* Main Split Content */}
-      <div className="flex flex-1 gap-6 min-h-0 overflow-hidden">
+      <div className="flex flex-1 gap-6 min-h-0 overflow-hidden p-1">
         {/* Left: Groups Table */}
-        <div className="w-[340px] flex flex-col border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 rounded-xl overflow-hidden shadow-sm transition-all hover:shadow-md">
-          <div className="h-12 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-white/10 px-4 flex items-center justify-between">
-            <span className="text-[16px] font-bold uppercase tracking-wider text-zinc-500">CATEGORY</span>
-            <Badge variant="secondary" className="font-bold text-[16px] h-6">{groups.length}</Badge>
+        <div className="w-[400px] flex flex-col border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 rounded-xl overflow-hidden shadow-sm">
+          <div className="h-12 bg-zinc-100/50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-white/10 px-4 flex items-center justify-between">
+            <span className="text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">CATEGORY</span>
+            <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-600 border-none text-[12px] h-6 pl-4 pr-4 font-bold">{groups.length}</Badge>
           </div>
           <div className="flex-1 overflow-auto custom-scrollbar">
             <Table>
@@ -561,27 +598,40 @@ export default function KnowledgeBasePage() {
                     onClick={() => setSelectedGroupId(group.id)}
                     className={cn(
                       "cursor-pointer transition-colors group",
-                      selectedGroupId === group.id ? "bg-violet-500/5 dark:bg-violet-500/10 border-l-2 border-l-violet-500" : "hover:bg-zinc-50 dark:hover:bg-white/5"
+                      Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500/5 dark:bg-indigo-500/10" : "hover:bg-zinc-50 dark:hover:bg-white/5"
                     )}
                   >
-                    <TableCell className="py-3 px-4">
+                    <TableCell
+                      className={cn(
+                        "py-3 px-4 transition-all",
+                        Number(selectedGroupId) === Number(group.id) && "shadow-[inset_3px_0_0_0_#8b5cf6]"
+                      )}
+                    >
                       <div className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-lg transition-colors flex items-center justify-center shrink-0", selectedGroupId === group.id ? "bg-violet-500 text-white" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500")}>
-                          <FolderOpen className="size-4" />
+                        <div className={cn("p-2 rounded-lg transition-colors flex items-center justify-center shrink-0", Number(selectedGroupId) === Number(group.id) ? "bg-indigo-500 text-white" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500")}>
+                          <FolderOpen className={cn("size-4", !group.active && "opacity-40")} />
                         </div>
                         <div className="min-w-0 flex-1 flex flex-col justify-center">
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm truncate">{group.name}</span>
+                            <span className={cn("font-semibold text-sm truncate", !group.active && "text-zinc-400")}>{group.name}</span>
                             <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4 font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border-none shrink-0">
                               {group.file_count || 0}
                             </Badge>
                           </div>
-                          <p className="text-xs text-zinc-400 truncate mt-0.5 font-normal leading-tight">{group.description || "No description"}</p>
+                          <p className={cn("text-xs truncate mt-0.5 font-normal leading-tight", group.active ? "text-zinc-400" : "text-zinc-300")}>{group.description || "No description"}</p>
                         </div>
-                        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-0.5 shrink-0 transition-opacity">
+                          <div className="flex items-center px-1">
+                            <Switch
+                              checked={group.active}
+                              onCheckedChange={(val) => handleUpdateGroup(group.id, val)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="scale-75 data-[state=checked]:bg-indigo-500"
+                            />
+                          </div>
                           <Button
                             variant="ghost" size="icon"
-                            className="size-7 text-zinc-400 hover:text-violet-500"
+                            className="size-7 text-zinc-400 hover:text-indigo-500"
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingGroup(group);
@@ -609,154 +659,187 @@ export default function KnowledgeBasePage() {
         </div>
 
         {/* Right: Files Table */}
-        <div className="flex-1 flex flex-col border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 rounded-xl overflow-hidden shadow-sm transition-all hover:shadow-md">
-          {/* Files List Header */}
-          <div className="h-12 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-white/10 px-6 flex items-center justify-between gap-4">
+        <div className="flex-1 flex flex-col border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 rounded-xl overflow-hidden shadow-sm">
+          {/* Files List Header - Action Bar (Simplified) */}
+          <div className="h-12 bg-zinc-50/50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-white/10 px-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-[16px] font-bold uppercase tracking-wider text-zinc-500">DOCUMENT</span>
-              {selectedGroup && <Badge variant="outline" className="bg-violet-500/10 text-violet-600 border-none text-[14px] h-6 pl-4 pr-4 font-bold">{selectedGroup.name}</Badge>}
+              <span className="text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">DOCUMENTS</span>
+              {selectedGroup && <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-600 border-none font-bold text-[12px] uppercase">{selectedGroup.name}</Badge>}
             </div>
-            <div className="relative w-56">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-zinc-400" />
-              <Input
-                placeholder="Search documents..."
-                className="h-7 pl-8 py-1 text-[11px] bg-white dark:bg-zinc-800 border-zinc-200 dark:border-white/5 shadow-none focus-visible:ring-1 focus-visible:ring-violet-500/30"
-                value={fileSearch}
-                onChange={e => setFileSearch(e.target.value)}
-              />
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-zinc-400" />
+                <Input
+                  placeholder="Search documents..."
+                  className="pl-8 h-8 w-48 text-[13px] bg-white/50 dark:bg-white/5 border-zinc-200 dark:border-white/10"
+                  value={fileSearch}
+                  onChange={(e) => setFileSearch(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto custom-scrollbar">
-            <Table>
-              <TableHeader className="sticky top-0 bg-white dark:bg-zinc-950 z-10 shadow-sm border-b">
-                <TableRow className="bg-zinc-50/50 dark:bg-white/5 h-10 hover:bg-transparent">
-                  <TableHead className="px-6 text-[12px] font-bold uppercase tracking-widest">Document name</TableHead>
-                  <TableHead className="px-4 text-[12px] font-bold uppercase tracking-widest w-[160px]">Status</TableHead>
-                  <TableHead className="px-4 text-[12px] font-bold uppercase tracking-widest w-[180px]">Created time</TableHead>
-                  <TableHead className="px-4 text-[12px] font-bold uppercase tracking-widest w-[120px]">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {!selectedGroupId ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-xs text-zinc-400 italic">Select a category to start</TableCell></TableRow>
-                ) : loadingFiles ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-xs text-zinc-500 animate-pulse font-medium">Syncing list...</TableCell></TableRow>
-                ) : filteredFiles.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-20 text-xs text-zinc-400">No data found</TableCell></TableRow>
-                ) : filteredFiles.map(file => {
-                  const status = STATUS_CONFIG[file.status as FileStatus] || STATUS_CONFIG.pending;
-                  return (
-                    <TableRow key={file.id} className="hover:bg-zinc-50/80 dark:hover:bg-white/5 group transition-all h-14">
-                      <TableCell className="px-6">
-                        <div className="flex items-center gap-3">
-                          {getFileIcon(file.file_name)}
-                          <div className="min-w-0 max-w-[400px]">
-                            <p className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 truncate" title={file.file_name}>{file.file_name}</p>
-                            <p className="text-[10px] text-zinc-400 mt-0.5 font-medium uppercase tracking-tighter">REF_ID: #{file.id} &bull; CHUNK_SIZE: DEFAULT</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-4">
-                        <div className="flex flex-col items-start gap-1">
-                          <div 
-                            className={cn(
-                                "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-tight", 
-                                status.color,
-                                file.status === "error" && "cursor-pointer hover:underline decoration-dotted"
-                            )}
-                            onClick={() => file.status === "error" && openErrorLog(file)}
-                          >
-                            {status.icon}
-                            {status.label}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-4">
-                        <div className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-400 tabular-nums">
-                          {new Date(file.created_at).toLocaleDateString("en-US", { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                          <span className="opacity-40 text-xs font-normal">
-                            {new Date(file.created_at).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-4">
-                        <div className="flex items-center justify-start gap-1 opacity-0 group-hover:opacity-100 duration-200">
-                          {file.status === "error" && (
-                            <Button
-                              variant="ghost" size="icon"
-                              className={cn(
-                                "size-8 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-500/10 transition-colors",
-                                retryingFileId === file.id && "animate-spin"
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Table Header (Fixed) */}
+            <div className="bg-zinc-100/50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-white/10 shrink-0">
+              <table className="w-full table-fixed text-sm border-separate border-spacing-0">
+                <thead className="text-zinc-500 dark:text-zinc-400 uppercase text-sm tracking-wider">
+                  <tr className="h-12">
+                    <th className="px-4 font-bold text-left">File name</th>
+                    <th className="w-[100px] px-4 font-bold text-center">Type</th>
+                    <th className="w-[100px] px-4 font-bold text-center">Size</th>
+                    <th className="w-[150px] px-4 font-bold text-center">Status</th>
+                    <th className="w-[100px] px-4 font-bold text-center">Active</th>
+                    <th className="w-[120px] px-4 font-bold text-center">Action</th>
+                  </tr>
+                </thead>
+              </table>
+            </div>
+
+            {/* Table Body (Scrollable) */}
+            <div className="flex-1 overflow-auto custom-scrollbar">
+              <table className="w-full table-fixed text-sm border-separate border-spacing-0">
+                <tbody className="divide-y divide-zinc-100 dark:divide-white/5">
+                  {!selectedGroupId ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-20 text-sm text-zinc-400 italic">
+                        Select a category to start
+                      </td>
+                    </tr>
+                  ) : loadingFiles ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-20">
+                        <Loader2 className="size-6 animate-spin mx-auto text-zinc-300" />
+                      </td>
+                    </tr>
+                  ) : filteredFiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-20 text-sm text-zinc-500 italic">
+                        No documents found matching your criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredFiles.map(file => {
+                      const status = STATUS_CONFIG[file.status as FileStatus] || STATUS_CONFIG.pending;
+                      return (
+                        <tr key={file.id} className="hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors h-14 border-b border-zinc-100 dark:border-white/5">
+                          <td className="px-4 text-left">
+                            <div className="flex items-center gap-3">
+                              <div className={cn("size-8 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0", !file.active && "opacity-40")}>
+                                {getFileIcon(file.file_name)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={cn("font-semibold text-zinc-900 dark:text-zinc-100 truncate", !file.active && "text-zinc-400")} title={file.file_name}>
+                                  {file.file_name}
+                                </p>
+                                <p className="text-[11px] text-zinc-500">
+                                  {new Date(file.created_at).toLocaleDateString()} {new Date(file.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="w-[100px] px-4 text-center">
+                            <Badge variant="outline" className={cn("text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 border-none uppercase", !file.active && "opacity-40")}>
+                              {file.file_name.split('.').pop()}
+                            </Badge>
+                          </td>
+                          <td className="w-[100px] px-4 text-center text-zinc-500 text-[12px]">
+                            {(file.file_size / 1024).toFixed(1)} KB
+                          </td>
+                          <td className="w-[150px] px-4">
+                            <div className="flex justify-center">
+                              <div
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-tight",
+                                  status.color,
+                                  file.status === "error" && "cursor-pointer hover:underline decoration-dotted",
+                                  !file.active && "opacity-40"
+                                )}
+                                onClick={() => file.status === "error" && openErrorLog(file)}
+                              >
+                                {status.icon}
+                                {status.label}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="w-[100px] px-4 text-center">
+                            <div className="flex justify-center">
+                              <Switch
+                                checked={file.active !== false}
+                                onCheckedChange={(val) => handleUpdateFile(file.id, { active: val })}
+                                className="scale-75 data-[state=checked]:bg-indigo-500"
+                              />
+                            </div>
+                          </td>
+                          <td className="w-[120px] px-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {(file.status === "completed" || file.status === "error" || file.status === "error_triggering") && (
+                                <Button
+                                  variant="ghost" size="icon"
+                                  className={cn(
+                                    "size-8 rounded-lg text-indigo-500 hover:text-indigo-600 hover:bg-indigo-500/10 transition-colors",
+                                    retryingFileId === file.id && "animate-spin"
+                                  )}
+                                  onClick={() => handleRetryRag(file.id)}
+                                  disabled={retryingFileId === file.id}
+                                  title="Reprocess RAG"
+                                >
+                                  <RefreshCw className="size-3.5" />
+                                </Button>
                               )}
-                              onClick={() => handleRetryRag(file.id)}
-                              disabled={retryingFileId === file.id}
-                              title="Retry RAG Processing"
-                            >
-                              <RefreshCw className="size-3.5" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost" size="icon"
-                            className="size-8 rounded-lg text-zinc-400 hover:text-violet-500 hover:bg-violet-500/10 transition-colors"
-                            onClick={() => {
-                              const parts = file.file_name.split('.');
-                              const ext = parts.pop();
-                              const nameOnly = parts.join('.');
-                              setEditingFile(file);
-                              setRenamingFileTitle(nameOnly);
-                            }}
-                            title="Rename Document"
-                          >
-                            <Edit2 className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="size-8 rounded-lg text-zinc-400 hover:text-violet-500 hover:bg-violet-500/10 transition-colors"
-                            asChild
-                          >
-                            <a 
-                              href={file.file_path.startsWith('http') ? file.file_path : `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${file.file_path}`} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              title="View Document"
-                            >
-                              <Info className="size-3.5" />
-                            </a>
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="size-8 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                            onClick={() => deleteFile(file.id)}
-                            title="Delete Document"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                              <Button
+                                variant="ghost" size="icon"
+                                className="size-8 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+                                onClick={() => {
+                                  const parts = file.file_name.split('.');
+                                  const ext = parts.pop();
+                                  const nameOnly = parts.join('.');
+                                  setEditingFile(file);
+                                  setRenamingFileTitle(nameOnly);
+                                }}
+                                title="Rename Document"
+                              >
+                                <Edit2 className="size-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost" size="icon"
+                                className="size-8 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+                                asChild
+                              >
+                                <a
+                                  href={file.file_path.startsWith('http') ? file.file_path : `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${file.file_path}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="View Document"
+                                >
+                                  <Info className="size-3.5" />
+                                </a>
+                              </Button>
+                              <Button
+                                variant="ghost" size="icon"
+                                className="size-8 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                onClick={() => deleteFile(file.id)}
+                                title="Delete Document"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { 
-          background: rgba(124, 58, 237, 0.1); 
-          border-radius: 10px; 
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(124, 58, 237, 0.2); }
-      `}</style>
-
-      <AdminLogsDrawer 
-        open={logDrawerOpen} 
-        onOpenChange={setLogDrawerOpen} 
-        initialLog={selectedLog} 
+      <AdminLogsDrawer
+        open={logDrawerOpen}
+        onOpenChange={setLogDrawerOpen}
+        initialLog={selectedLog}
       />
     </div>
   );

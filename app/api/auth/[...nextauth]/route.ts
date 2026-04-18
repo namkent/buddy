@@ -72,6 +72,10 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
+  session: {
+    strategy: "jwt",
+    maxAge: 1 * 24 * 60 * 60, // 1 day (24 hours)
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,

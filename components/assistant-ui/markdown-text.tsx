@@ -54,7 +54,7 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   };
 
   return (
-    <div className="aui-code-header-root mt-2.5 flex items-center justify-between rounded-t-lg border border-border/50 border-b-0 bg-muted/50 px-3 py-1.5 text-xs">
+    <div className="aui-code-header-root mt-2.5 flex items-center justify-between rounded-t-lg border border-border/50 border-b-0 bg-muted/50 px-3 py-1.5 mb-0.5 text-sm">
       <span className="aui-code-header-language font- text-muted-foreground lowercase">
         {language}
       </span>
@@ -255,6 +255,22 @@ const defaultComponents = memoizeMarkdownComponents({
           "aui-md-inline-code rounded-md border border-border/50 bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em]",
           className,
         )}
+        {...props}
+      />
+    );
+  },
+  img: ({ className, src, alt, ...props }) => {
+    if (!src || typeof src !== "string") return null;
+    // Nếu là đường dẫn nội bộ từ RAG (bắt đầu bằng /group_)
+    const fullSrc = src.startsWith("/group_")
+      ? `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${src}`
+      : src;
+
+    return (
+      <img
+        src={fullSrc}
+        alt={alt ?? "image"}
+        className={cn("aui-md-img my-2.5 max-w-full", className)}
         {...props}
       />
     );

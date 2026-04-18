@@ -1,20 +1,18 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { dbConnection } from "@/lib/db";
+import { requireAuth, successResponse } from "@/lib/api-utils";
 
-// Lightweight endpoint: called every 30s by the client to mark user as online
+/**
+ * [GET] Heartbeat Check: Được gọi mỗi 30 giây từ client để xác định người dùng đang online
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ ok: false }, { status: 401 });
-  }
+  const { error, user } = await requireAuth();
+  if (error) return error;
 
-  const userId = (session.user as any).userId;
+  const userId = user?.userId;
   if (userId) {
-    // Fire-and-forget — never blocks the response
+    // Cập nhật thời gian hoạt động cuối cùng mà không làm nghẽn phản hồi (async)
     dbConnection.users.updateLastActive(userId).catch(() => {});
   }
 
-  return NextResponse.json({ ok: true });
+  return successResponse({ ok: true });
 }

@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { dbConnection } from '@/lib/db';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { requireAdmin, errorResponse, successResponse } from "@/lib/api-utils";
 
+/**
+ * [GET] Lấy danh sách logs hệ thống với phân trang và bộ lọc
+ */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -17,27 +17,31 @@ export async function GET(req: Request) {
     const source = searchParams.get('source');
     const user_id = searchParams.get('user_id');
 
+    // Tìm kiếm logs dựa trên bộ lọc
     const logs = await dbConnection.logs.findAll(limit, offset, { level, source, user_id });
-    return NextResponse.json({ logs });
+    return successResponse({ logs });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Fetch logs fail:", error);
+    return errorResponse("Lỗi hệ thống khi tải nhật ký", 500);
   }
 }
 
+/**
+ * [POST] Tạo một bản ghi log thủ công (dành cho Admin)
+ */
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
+  const { error, user: admin } = await requireAdmin();
+  if (error) return error;
 
   try {
     const data = await req.json();
     const log = await dbConnection.logs.create({
       ...data,
-      user_id: (session.user as any).userId
+      user_id: admin!.userId
     });
-    return NextResponse.json({ log });
+    return successResponse({ log });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Create log fail:", error);
+    return errorResponse("Không thể tạo bản ghi nhật ký", 500);
   }
 }

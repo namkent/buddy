@@ -1,40 +1,41 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { requireAuth, errorResponse } from "@/lib/api-utils";
 
+/**
+ * [GET] API Trung tâm phục vụ các tệp tin từ Storage ngoài (External Storage)
+ * Bảo mật: Chỉ người dùng đã đăng nhập mới có thể truy cập
+ */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  // 1. Kiểm tra session nếu cần bảo mật
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  // 1. Xác thực người dùng (Session Required)
+  const { error } = await requireAuth();
+  if (error) return error;
 
   try {
     const { path: pathSegments } = await params;
     
-    // 2. Lấy root storage path từ .env
+    // 2. Lấy đường dẫn gốc (Root) của storage từ biến môi trường
     const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
     
-    // 3. Xây dựng đường dẫn vật lý an toàn
+    // 3. Xây dựng đường dẫn vật lý an toàn và chuẩn hóa
     const relativePath = path.join(...pathSegments);
     const safePhysicalPath = path.normalize(path.join(storageRoot, relativePath));
 
-    // 4. Bảo mật: Đảm bảo đường dẫn nằm trong storageRoot (tránh directory traversal)
+    // 4. Bảo mật: Chống tấn công Directory Traversal (Đảm bảo file nằm trong thư mục gốc cho phép)
     if (!safePhysicalPath.startsWith(path.normalize(storageRoot))) {
-      return new Response("Forbidden", { status: 403 });
+      return errorResponse("Bạn không có quyền truy cập vào thư mục này", 403);
     }
 
-    // 5. Kiểm tra file tồn tại
+    // 5. Kiểm tra tệp tin có tồn tại không
     if (!fs.existsSync(safePhysicalPath) || fs.lstatSync(safePhysicalPath).isDirectory()) {
-      return new Response("File not found", { status: 404 });
+      return errorResponse("Tệp tin không tồn tại", 404);
     }
 
-    // 6. Xác định Content-Type
+    // 6. Tự động xác định Content-Type dựa trên đuôi tệp
     const ext = path.extname(safePhysicalPath).toLowerCase();
     const mimeMap: Record<string, string> = {
       '.pdf': 'application/pdf',
@@ -51,10 +52,10 @@ export async function GET(
     
     const contentType = mimeMap[ext] || 'application/octet-stream';
 
-    // 7. Đọc và Stream file
+    // 7. Stream tệp tin về Client để tối ưu bộ nhớ
     const fileStream = fs.createReadStream(safePhysicalPath);
     
-    // Chuyển đổi Node.js stream sang Web stream cho NextResponse
+    // Chuyển đổi định dạng Node.js stream sang Web stream (Tương thích Edge Runtime)
     const stream = new ReadableStream({
       start(controller) {
         fileStream.on('data', (chunk) => controller.enqueue(chunk));
@@ -69,12 +70,12 @@ export async function GET(
     return new Response(stream, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600', // Cache 1 giờ
+        'Cache-Control': 'public, max-age=3600', // Cho phép cache trình duyệt trong 1 giờ
       },
     });
 
   } catch (error: any) {
-    console.error("File server error:", error);
-    return new Response("Internal Server Error", { status: 500 });
+    console.error("File distribution error:", error);
+    return errorResponse("Lỗi hệ thống khi tải tệp tin", 500);
   }
 }

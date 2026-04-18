@@ -1,16 +1,38 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { frontendTools } from "@assistant-ui/react-ai-sdk";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
-import { JSONSchema7, streamText, tool } from "ai";
+import { JSONSchema7, streamText } from "ai";
 import { dbConnection } from "@/lib/db";
+import { requireAuth } from "@/lib/api-utils";
 
+/**
+ * Cấu hình model OpenAI/AI service
+ */
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_KEY,
   baseURL: process.env.OPENAI_BASE_URL,
 });
 
+/**
+ * Helper: Trả về lỗi dưới dạng stream để Chat UI có thể hiển thị trực tiếp trong khung chat
+ */
+const errorStream = (msg: string) => {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(msg));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+};
+
+/**
+ * API Chat chính: Xử lý tin nhắn, nạp bộ nhớ, gọi công cụ (RAG, Translate) và stream kết quả
+ */
 export async function POST(req: Request) {
+  // 1. Phân giải dữ liệu từ request
   const { message, threadId, system, tools }: {
     message: any;
     threadId?: string;
@@ -22,309 +44,323 @@ export async function POST(req: Request) {
     return new Response("Missing message", { status: 400 });
   }
 
-  const session = await getServerSession(authOptions);
-
-  // Helper: trả về message lỗi dưới dạng stream để chat UI hiển thị được
-  const errorStream = (msg: string) => {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(msg));
-        controller.close();
-      },
-    });
-    return new Response(stream, {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
-  };
-
-  if (!session) {
-    return errorStream("⚠️ Bạn chưa đăng nhập. Vui lòng đăng nhập để sử dụng trợ lý AI.");
+  // 2. Xác thực người dùng thông qua tiện ích dùng chung
+  const { error, user } = await requireAuth();
+  if (error) {
+    // Nếu là lỗi auth, trả về dưới dạng stream để UI hiển thị thông báo đẹp mắt
+    return errorStream("⚠️ Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.");
   }
+  
+  const { userId, userName, email, is_banned, role } = user!;
 
-  const { userId, userName, email, avatar, is_banned, role } = session.user as any;
-
+  // 3. Kiểm tra các hạn chế về tài khoản (Banned, Guest)
   if (is_banned) {
-    return errorStream("🚫 Tài khoản của bạn đã bị vô hiệu hóa bởi Quản trị viên do vi phạm điều khoản hệ thống.\n\nVui lòng hệ admin@mes.local để biết thêm chi tiết.");
+    return errorStream("🚫 Tài khoản của bạn đã bị vô hiệu hóa. Vui lòng liên hệ Admin.");
   }
 
   if (role === "guest") {
     const enableGuest = await dbConnection.settings.get("ENABLE_GUEST_ACCESS");
     if (enableGuest !== "true") {
-      return errorStream("🔒 Tài khoản của bạn đang ở cấp độ **Guest** và chưa được cấp quyền sử dụng hệ thống.\n\nVui lòng liên hệ Quản trị viên để được phê duyệt quyền truy cập.");
+      return errorStream("🔒 Tài khoản Guest chưa được cấp quyền sử dụng trợ lý AI. Vui lòng liên hệ Admin để phê duyệt.");
     }
   }
 
-  // Fire-and-forget: cập nhật last_active không làm chậm request
-  if (userId) {
-    dbConnection.users.updateLastActive(userId).catch(() => { });
-  }
+  // Cập nhật thời gian hoạt động cuối cùng (không đợi - fire and forget)
+  dbConnection.users.updateLastActive(userId).catch(() => { });
 
+  // 4. Khôi phục lịch sử hội thoại từ Database
   let apiMessages: any[] = [];
-
-  // Reconstruct history from database
   if (threadId) {
     const dbMessages = await dbConnection.messages.findByThreadId(threadId);
-    apiMessages = dbMessages.map((m: any) => {
-      let parsedContent = m.content;
-      try {
-        if (typeof m.content === "string") parsedContent = JSON.parse(m.content);
-      } catch (e) {
-        parsedContent = m.content;
-      }
+    apiMessages = dbMessages.map((m: any) => ({
+      role: m.role,
+      content: getParsedContent(m.content)
+    }));
 
-      return {
-        role: m.role,
-        content: Array.isArray(parsedContent)
-          ? parsedContent.map((c: any) => {
-            if (c.type === "text") return { type: "text", text: c.text };
-            if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
-              const imgVal = c.image || c.url;
-              if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
-                const [header, base64] = imgVal.split(",");
-                const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
-                return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
-              }
-              return { type: "image", image: imgVal };
-            }
-            return null;
-          }).filter(Boolean)
-          : String(m.content).replace(/<think>[\s\S]*?<\/think>/g, "")
-      };
-    });
-
-    // Check if the current message is already in DB history 
-    // to avoid sending it twice to the AI prompt
+    // Tránh gửi trùng tin nhắn cuối cùng nếu nó đã tồn tại trong DB
     const lastDbMsg = dbMessages[dbMessages.length - 1];
     if (lastDbMsg?.id !== message.id) {
       apiMessages.push({
         role: message.role,
-        content: Array.isArray(message.content)
-          ? message.content.map((c: any) => {
-            if (c.type === "text") return { type: "text", text: c.text };
-            if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
-              const imgVal = c.image || c.url;
-              if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
-                const [header, base64] = imgVal.split(",");
-                const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
-                return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
-              }
-              return { type: "image", image: imgVal };
-            }
-            return null;
-          }).filter(Boolean)
-          : message.content
+        content: processMessageContent(message.content)
       });
     }
   } else {
-    // Failsafe mostly
     apiMessages.push({
       role: message.role,
-      content: Array.isArray(message.content)
-        ? message.content.map((c: any) => {
-          if (c.type === "text") return { type: "text", text: c.text };
-          if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
-            const imgVal = c.image || c.url;
-            if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
-              const [header, base64] = imgVal.split(",");
-              const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
-              return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
-            }
-            return { type: "image", image: imgVal };
-          }
-          return null;
-        }).filter(Boolean)
-        : message.content
+      content: processMessageContent(message.content)
     });
   }
 
-  // Lấy content sạch từ tin nhắn cuối cùng của user để nạp Memory
-  let cleanMessageContent: string = Array.isArray(message.content)
-    ? message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
-    : String(message.content);
+  // Lấy nội dung văn bản thuần của tin nhắn mới nhất
+  const currentTextContent = extractTextOnly(message.content);
 
-  // --- MEM0 MEMORY INTEGRATION ---
+  // 5. Tích hợp bộ nhớ dài hạn Mem0 (nếu bật)
   let memoryContextStr = "";
   if (process.env.ENABLE_MEM0 === "true") {
     try {
       const { memory } = await import("@/lib/memory");
-      const ctx = await memory.search(cleanMessageContent, { userId });
-      console.log(`memory [${userId}] : ${ctx}`);
+      // Tìm kiếm ngữ ký quá khứ
+      const ctx = await memory.search(currentTextContent, { userId });
       if (ctx) memoryContextStr = ctx;
 
-      memory.add(cleanMessageContent, { userId }).then(() => {
-        console.log(`memory add [${userId}] : OK`);
-      }).catch((e: any) => {
-        console.error(`memory add [${userId}] FAIL:`, e?.message || e);
-      });
+      // Lưu trữ thông tin mới vào bộ nhớ
+      memory.add(currentTextContent, { userId }).catch((e) => console.error("Memory Add Fail:", e));
     } catch (error) {
-      console.error("Mem0 Search Fail:", error);
+      console.error("Memory Integration Fail:", error);
     }
   }
 
-  // Scan whether any message has an image block to swap the model if needed
-  const hasImage = apiMessages.some(m =>
-    Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image')
-  );
-
+  // 6. Lựa chọn Model (Vision nếu có ảnh, ngược lại là model text)
+  const hasImage = apiMessages.some(m => Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image'));
   const selectedModel = hasImage
     ? (process.env.VISION_MODEL || process.env.OPENAI_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct")
     : (process.env.OPENAI_MODEL || "llama-3.3-70b-versatile");
 
-  console.log(`[Chat] Model: ${selectedModel}, HasImage: ${hasImage}`);
-
-  // Lấy cấu hình hệ thống
+  // 7. Xử lý System Prompt và Slash Commands
   const [dbSystemPrompt, rawEnableTranslate, rawEnableRag] = await Promise.all([
     dbConnection.settings.get("SYSTEM_PROMPT"),
     dbConnection.settings.get("ENABLE_TOOL_TRANSLATE"),
     dbConnection.settings.get("ENABLE_TOOL_RAG_SEARCH")
   ]);
 
-  let resolvedSystemPrompt = dbSystemPrompt || "Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống. Bạn mang phong cách như một đồng nghiệp thông minh, thân thiện.";
-
+  let resolvedSystemPrompt = system || dbSystemPrompt || "Bạn là trợ lý ảo MES Buddy thông minh, thân thiện.";
   let isSlashCommand = false;
 
-  // --- XỬ LÝ SLASH COMMANDS ---
-  if (typeof cleanMessageContent === "string") {
-    const trimmedContent = cleanMessageContent.trim();
-    if (system) resolvedSystemPrompt = system; // Ưu tiên system prompt từ client nếu có
+  // Lấy Metadata gửi ngầm (ưu tiên cao nhất)
+  const meta = message.metadata?.custom || {};
+  const metaMode = meta.chatMode;
+  const metaGroupId = meta.groupId;
+  const metaTargetLang = meta.targetLang;
 
-    if (trimmedContent.startsWith("/search ") || trimmedContent.startsWith("[Search] ")) {
-      isSlashCommand = true;
-      const query = trimmedContent.replace(/^(\/search|\[Search\])\s+/i, '').trim();
-      
-      // Xác định host và origin động để tạo URL tuyệt đối cho ảnh
-      const host = req.headers.get("host");
-      const protocol = req.headers.get("x-forwarded-proto") || "http";
-      const origin = `${protocol}://${host}`;
+  // 1. Xử lý RAG (Search)
+  if (metaMode === "search" || currentTextContent.startsWith("/search ") || currentTextContent.startsWith("[Search] ") || currentTextContent.startsWith("[Search Catalog: ")) {
+    isSlashCommand = true;
+    
+    let query = currentTextContent;
+    let groupId: number | undefined = metaGroupId;
 
-      // Perform RAG search to python service
-      let ragContext = "Không có kết quả nào.";
-      try {
-        const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
-        const res = await fetch(`${pythonUrl}/rag/search`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query, top_k: 5 }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.results && data.results.length > 0) {
-            ragContext = data.results.map((r: any, idx: number) => {
-              let chunkStr = `[Tài liệu ${idx + 1}]:\n${r.text}`;
-              if (r.image_url) {
-                // Tạo URL tuyệt đối để AI không bị "ảo giác" tự điền domain example.com
-                const fullImageUrl = r.image_url.startsWith('http') 
-                  ? r.image_url 
-                  : `${origin}${process.env.NEXT_PUBLIC_FILE_SERVER_URL || ""}${r.image_url}`;
-                // Return markdown image
-                chunkStr += `\nHình ảnh đính kèm: ![image](${fullImageUrl})`;
-              }
-              return chunkStr;
-            }).join("\n\n");
-          }
-        }
-      } catch (e) {
-        console.error("RAG Search Error:", e);
-      }
-
-      console.log(`[RAG Search] Query: ${query}, Results Count: ${ragContext === "Không có kết quả nào." ? 0 : 5}`);
-
-      resolvedSystemPrompt = `Bạn là chuyên gia RAG (Retrieval-Augmented Generation) của hệ thống SDV MES. Người dùng đang tìm kiếm thông tin với câu hỏi: "${query}".
-
-TRÍCH DẪN TÀI LIỆU NỘI BỘ (GROUNDING DATA):
-${ragContext}
-
-QUY TẮC PHẢN HỒI (BẮT BUỘC):
-1. CHỈ ĐƯỢC PHÉP dựa vào các trích dẫn trên để trả lời. 
-2. NẾU CÓ HÌNH ẢNH (markdown ![image](url)) trong trích dẫn, bạn PHẢI nhúng hình ảnh đó vào vị trí phù hợp trong câu trả lời của bạn. Đây là yêu cầu quan trọng nhất để người dùng có thể hình dung được quy trình.
-3. NẾU TRONG TRÍCH DẪN KHÔNG CÓ THÔNG TIN, bạn PHẢI nói: "Tôi không tìm thấy thông tin này trong hệ thống tài liệu." TUYỆT ĐỐI KHÔNG BIẠ ĐẶT.
-4. Trả lời bằng ĐÚNG ngôn ngữ mà người dùng dùng để hỏi.
-5. Luôn giữ thái độ chuyên nghiệp, hỗ trợ kỹ thuật tận tâm.`;
-
-      // Xoá trigger command khỏi phần LLM tiếp nhận, chỉ truyền câu hỏi gốc
-      if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
-        apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: `Câu hỏi: ${query}` } : c);
+    if (!groupId) {
+      // Fallback for legacy string commands
+      const catalogMatch = currentTextContent.match(/^\[Search Catalog: (\d+)\]\s*([\s\S]*)$/i);
+      if (catalogMatch) {
+        groupId = parseInt(catalogMatch[1]);
+        query = catalogMatch[2].trim();
       } else {
-        apiMessages[apiMessages.length - 1].content = `Câu hỏi: ${query}`;
+        query = currentTextContent.replace(/^(\/search|\[Search\])\s+/i, '').trim();
       }
-      cleanMessageContent = `Câu hỏi: ${query}`;
     }
-    else if (trimmedContent.startsWith("/translate ") || trimmedContent.startsWith("[Translate ")) {
-      // parse định dạng: "/translate Tiếng Việt:\n<nội-dung-cần-dịch>" hoặc "[Translate English]:\n..."
-      const match = trimmedContent.match(/^(?:\/translate|\[Translate)\s+(.*?)\]?:\s*([\s\S]*)$/i);
-      if (match) {
-        isSlashCommand = true;
-        const lang = match[1].trim();
-        const bodyContent = match[2].trim();
-        resolvedSystemPrompt = `Bạn là một biên dịch viên ngôn ngữ bản xứ chuyên nghiệp. Người dùng muốn bạn dịch văn bản sang ngôn ngữ: **${lang}**.\n\nCHỈ TRẢ VỀ bản dịch sạch sẽ trực tiếp, TUYỆT ĐỐI KHÔNG giải thích, KHÔNG thêm lời chào, KHÔNG bình luận thêm bất cứ từ nào ngoài bản dịch, KHÔNG bọc bản dịch trong dấu ngoặc kép hoặc các ký tự định dạng. Dịch một cách tự nhiên và chính xác nhất sát ngữ cảnh.`;
 
-        // Đảm bảo LLM chỉ nhận đúng nội dung cần dịch
-        const targetContent = `Văn bản cần dịch sang ngôn ngữ ${lang}:\n\n${bodyContent || "(Trống)"}`;
-        if (Array.isArray(apiMessages[apiMessages.length - 1].content)) {
-          apiMessages[apiMessages.length - 1].content = apiMessages[apiMessages.length - 1].content.map((c: any) => c.type === "text" ? { type: "text", text: targetContent } : c);
-        } else {
-          apiMessages[apiMessages.length - 1].content = targetContent;
+    const { contextText, relevantImages } = await performRAGSearch(query, req, groupId);
+    resolvedSystemPrompt = createRAGSystemPrompt(query, contextText);
+    
+    // Nếu có ảnh từ RAG, chèn chúng vào tin nhắn cuối cùng để Bot "nhìn" thấy
+    if (relevantImages.length > 0) {
+      const lastMsg = apiMessages[apiMessages.length - 1];
+      if (!Array.isArray(lastMsg.content)) {
+        lastMsg.content = [{ type: "text", text: lastMsg.content }];
+      }
+      
+      for (const imgUrl of relevantImages.slice(0, 3)) { // Giới hạn 3 ảnh tránh overload
+        try {
+          const res = await fetch(imgUrl);
+          if (res.ok) {
+            const buffer = await res.arrayBuffer();
+            const contentType = res.headers.get("content-type") || "image/jpeg";
+            lastMsg.content.push({
+              type: "image",
+              image: new Uint8Array(buffer),
+              mimeType: contentType
+            });
+          }
+        } catch (e) {
+          console.error("Fetch RAG image fail:", imgUrl, e);
         }
-        cleanMessageContent = bodyContent || "Dịch thuật";
+      }
+    }
+
+    updateLastMessageContent(apiMessages, `Câu hỏi: ${query}`);
+  } 
+  // 2. Xử lý Dịch thuật (Translate)
+  else if (metaMode === "translate" || currentTextContent.startsWith("/translate ") || currentTextContent.startsWith("[Translate ")) {
+    isSlashCommand = true;
+    
+    if (metaTargetLang) {
+      // Ưu tiên Metadata
+      resolvedSystemPrompt = `Bạn là biên dịch viên chuyên nghiệp. Dịch văn bản sau sang ${metaTargetLang.name}. CHỈ trả về bản dịch.`;
+      const targetContent = `Dịch sang ${metaTargetLang.name}:\n\n${currentTextContent.trim() || "(Trống)"}`;
+      updateLastMessageContent(apiMessages, targetContent);
+    } else {
+      // Fallback for legacy string commands
+      const match = currentTextContent.match(/^(?:\/translate|\[Translate)\s+(.*?)\]?:\s*([\s\S]*)$/i);
+      if (match) {
+        const [_, lang, body] = match;
+        resolvedSystemPrompt = `Bạn là biên dịch viên chuyên nghiệp. Dịch văn bản sau sang ${lang.trim()}. CHỈ trả về bản dịch.`;
+        const targetContent = `Dịch sang ${lang}:\n\n${body.trim() || "(Trống)"}`;
+        updateLastMessageContent(apiMessages, targetContent);
       }
     }
   }
 
+  // Hậu xử lý Tools (bật/tắt theo config)
   const activeTools = { ...frontendTools(tools ?? {}) };
-
-  if (rawEnableTranslate === "false" || rawEnableTranslate === "0") {
-    // Nếu có tool dịch và đang bị tắt, xoá nó để LLM không gọi được
-    if (activeTools.translate) delete activeTools.translate;
-  }
-  if (rawEnableRag === "false" || rawEnableRag === "0") {
-    if (activeTools.rag_search) delete activeTools.rag_search;
-    if (activeTools.ragSearch) delete activeTools.ragSearch;
+  if (rawEnableTranslate !== "true") delete activeTools.translate;
+  if (rawEnableRag !== "true") {
+    delete (activeTools as any).rag_search;
+    delete (activeTools as any).ragSearch;
   }
 
-  console.log(`memory [${userId}] : ${memoryContextStr}`);
-
+  // 8. Tạo System Prompt cuối cùng
   const finalSystemPrompt = isSlashCommand
     ? resolvedSystemPrompt
-    : `Role: You are the SDV MES Portal AI Assistant. You are chatting with: ${userName} (Email: ${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY CONTEXT]\nHere are the extracted user memories retrieved for this conversation:\n${memoryContextStr}\n[END MEMORY CONTEXT]`;
-  
-  // --- PRUNING IMAGES (MAX N) ---
-  // Limits total images sent in history to avoid API limits (e.g. Groq 5 images)
-  const maxVisionImagesStr = process.env.MAX_VISION_IMAGES;
-  const maxVisionImages = maxVisionImagesStr ? parseInt(maxVisionImagesStr, 10) : 0;
-  
-  if (maxVisionImages > 0) {
-    let imgCount = 0;
-    for (let i = apiMessages.length - 1; i >= 0; i--) {
-      const msg = apiMessages[i];
-      if (Array.isArray(msg.content)) {
-        msg.content = msg.content.map((c: any) => {
-          if (c.type === "image") {
-            imgCount++;
-            if (imgCount > maxVisionImages) {
-              return { type: "text", text: "[Ảnh cũ đã được lược bỏ để tiết kiệm bộ nhớ]" };
-            }
-          }
-          return c;
-        });
-      }
-    }
-  }
+    : `Role: Trợ lý MES Buddy đang hỗ trợ: ${userName} (${email}). ${resolvedSystemPrompt}\n\n[USER MEMORY]\n${memoryContextStr}`;
 
+  // 9. Giới hạn số lượng ảnh gửi đi (Pruning)
+  pruneImages(apiMessages);
+
+  // 10. Gọi AI và trả về Stream
   const result = streamText({
     model: openai.chat(selectedModel),
     messages: apiMessages,
     system: finalSystemPrompt,
-    tools: {
-      ...frontendTools(tools ?? {}),
-    } as any,
+    tools: activeTools as any,
     providerOptions: {
-      openai: {
-        // reasoningEffort: "low",
-        reasoningSummary: "auto",
-      },
+      openai: { reasoningSummary: "auto" },
     },
   });
 
   return result.toTextStreamResponse();
+}
+
+/**
+ * --- CÁC HÀM TRỢ GIÚP (HELPERS) ---
+ */
+
+// Chuyển đổi content từ DB sang định dạng AI SDK
+function getParsedContent(rawContent: any) {
+  let parsed = rawContent;
+  try {
+    if (typeof rawContent === "string") parsed = JSON.parse(rawContent);
+  } catch {
+    parsed = rawContent;
+  }
+  return processMessageContent(parsed);
+}
+
+// Xử lý logic nội dung tin nhắn (Text & Image Base64)
+function processMessageContent(content: any) {
+  if (!Array.isArray(content)) {
+    return String(content).replace(/<think>[\s\S]*?<\/think>/g, "");
+  }
+
+  return content.map((c: any) => {
+    if (c.type === "text") return { type: "text", text: c.text };
+    if (process.env.ENABLE_VISION === "true" && (c.type === "image" || c.image)) {
+      const imgVal = c.image || c.url;
+      if (typeof imgVal === "string" && imgVal.startsWith("data:")) {
+        const [header, base64] = imgVal.split(",");
+        const mimeType = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+        return { type: "image", image: new Uint8Array(Buffer.from(base64, "base64")), mimeType };
+      }
+      return { type: "image", image: imgVal };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+// Trích xuất văn bản thuần từ tin nhắn
+function extractTextOnly(content: any): string {
+  if (Array.isArray(content)) {
+    return content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n');
+  }
+  return String(content);
+}
+
+// Cập nhật nội dung tin nhắn cuối cùng trong mảng
+function updateLastMessageContent(messages: any[], newText: string) {
+  const lastMsg = messages[messages.length - 1];
+  if (Array.isArray(lastMsg.content)) {
+    lastMsg.content = lastMsg.content.map((c: any) => c.type === "text" ? { type: "text", text: newText } : c);
+  } else {
+    lastMsg.content = newText;
+  }
+}
+
+// Thực hiện RAG search qua Python Service
+async function performRAGSearch(query: string, req: Request, groupId?: number) {
+  const host = req.headers.get("host");
+  const protocol = req.headers.get("x-forwarded-proto") || "http";
+  const origin = `${protocol}://${host}`;
+
+  try {
+    const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
+    const res = await fetch(`${pythonUrl}/rag/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        query, 
+        group_id: groupId,
+        top_k: 8 
+      }), // Tăng top_k để bao quát văn bản dài
+    });
+    
+    if (!res.ok) return { contextText: "Không tìm thấy kết quả.", relevantImages: [] };
+    
+    const data = await res.json();
+    if (!data.results || data.results.length === 0) return { contextText: "Không tìm thấy kết quả.", relevantImages: [] };
+
+    const relevantImages: string[] = [];
+    const contextText = data.results.map((r: any, idx: number) => {
+      const { source, page, images } = r.metadata || {};
+      let chunk = `[Nguồn: ${source || 'Tài liệu hệ thống'}, Trang: ${page || 'N/A'}]:\n${r.text}`;
+      
+      // Xử lý danh sách ảnh từ metadata mới
+      if (images && Array.isArray(images)) {
+        images.forEach((imgUrl: string) => {
+          const fullUrl = imgUrl.startsWith('http') ? imgUrl : `${origin}${process.env.NEXT_PUBLIC_FILE_SERVER_URL || ""}${imgUrl}`;
+          relevantImages.push(fullUrl);
+          chunk += `\nHình ảnh tham chiếu: ![image](${fullUrl})`;
+        });
+      }
+      return chunk;
+    }).join("\n\n");
+
+    return { contextText, relevantImages };
+  } catch (e) {
+    console.error("RAG fetch fail:", e);
+    return { contextText: "Lỗi kết nối dịch vụ tìm kiếm.", relevantImages: [] };
+  }
+}
+
+// Tạo System Prompt cho RAG
+function createRAGSystemPrompt(query: string, context: string) {
+  return `Bạn là chuyên gia về văn bản pháp luật và quy trình MES. Câu hỏi: "${query}".
+DỰA VÀO DỮ LIỆU CUNG CẤP SAU ĐÂY ĐỂ TRẢ LỜI:
+${context}
+
+QUY TẮC PHẢN HỒI:
+1. TRÍCH DẪN NGUỒN: Bạn phải nêu rõ nguồn tài liệu và số trang khi trả lời (ví dụ: "Theo tài liệu [Tên tệp], trang [X]...").
+2. ĐỘ CHÍNH XÁC: Chỉ trả lời dựa trên dữ liệu được cung cấp. Nếu không có thông tin, hãy nói rõ bạn không tìm thấy thông tin này trong hệ thống kiến thức.
+3. HÌNH ẢNH: Nếu trong dữ liệu có hình ảnh (![image](url)), hãy giữ nguyên và nhúng vào câu trả lời tại vị trí phù hợp.
+4. ĐỊNH DẠNG: Sử dụng danh sách (bullet points) và phân cấp rõ ràng đối với các điều khoản pháp luật hoặc quy trình nhiều bước.`;
+}
+
+// Giới hạn số lượng ảnh trong lịch sử gửi đi
+function pruneImages(messages: any[]) {
+  const max = parseInt(process.env.MAX_VISION_IMAGES || "0", 10);
+  if (max <= 0) return;
+
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (Array.isArray(msg.content)) {
+      msg.content = msg.content.map((c: any) => {
+        if (c.type === "image") {
+          count++;
+          if (count > max) return { type: "text", text: "[Ảnh cũ đã được lược bỏ]" };
+        }
+        return c;
+      });
+    }
+  }
 }

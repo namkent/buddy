@@ -1,51 +1,51 @@
 import { dbConnection } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { requireAdmin, errorResponse, successResponse, logAdminAction } from "@/lib/api-utils";
 
+/**
+ * [GET] Lấy toàn bộ cấu hình hệ thống
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== "admin") {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   try {
     await dbConnection.initTables();
     const settings = await dbConnection.settings.getAll();
     return NextResponse.json(settings);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
+    console.error("Fetch settings fail:", error);
+    return errorResponse("Không thể tải cấu hình hệ thống", 500);
   }
 }
 
+/**
+ * [PUT] Cập nhật danh sách các cấu hình hệ thống
+ */
 export async function PUT(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== "admin") {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
+  const { error, user: admin } = await requireAdmin();
+  if (error) return error;
 
   try {
     const body = await req.json();
+    
+    // Yêu cầu format body: { settings: [{ key: 'KEY', value: 'VAL', description: 'DESC' }] }
     if (Array.isArray(body.settings)) {
-      // Body example: { settings: [{ key: 'WELCOME_TITLE', value: 'Hello' }] }
       for (const item of body.settings) {
         if (item.key) {
           await dbConnection.settings.set(item.key, item.value || "", item.description);
         }
       }
-      // Log action
-      await dbConnection.logs.create({
-        user_id: (session.user as any).userId,
-        level: 'info',
-        source: 'system',
-        message: 'Updated system settings',
-        details: JSON.stringify(body.settings)
-      });
 
-      return NextResponse.json({ success: true });
+      // GhiLog hành động thay đổi cấu hình
+      await logAdminAction(admin!.userId, 'system', 'Đã cập nhật cấu hình hệ thống', body.settings);
+
+      return successResponse({ success: true, message: "Cập nhật cấu hình thành công" });
     }
-    return NextResponse.json({ error: "Invalid payload format" }, { status: 400 });
+    
+    return errorResponse("Định dạng dữ liệu không hợp lệ", 400);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
+    console.error("Update settings fail:", error);
+    return errorResponse("Lỗi hệ thống khi cập nhật cấu hình", 500);
   }
 }
