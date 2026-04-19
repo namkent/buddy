@@ -192,18 +192,7 @@ const ThreadListItemMore: FC = () => {
 
 // ─── ArchivedSection ─────────────────────────────────────────────────────────
 const ArchivedSection: FC<{ isArchivedOpen: boolean, setIsArchivedOpen: (v: boolean) => void }> = ({ isArchivedOpen, setIsArchivedOpen }) => {
-  const runtime = useAssistantRuntime();
-  const [archivedCount, setArchivedCount] = useState(0);
-
-  useEffect(() => {
-    const updateCount = () => {
-      const state = runtime.threads.getState();
-      setArchivedCount(state.archivedThreadIds.length);
-    };
-
-    updateCount();
-    return runtime.threads.subscribe(updateCount);
-  }, [runtime.threads]);
+  const archivedCount = useAuiState((s) => s.threads.archivedThreadIds.length);
 
   if (archivedCount === 0) return null;
 

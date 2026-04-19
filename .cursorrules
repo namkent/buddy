@@ -1,0 +1,20 @@
+# Assistant-UI Knowledge & Implementation Rules
+
+You are an expert developer working on MES Buddy, a professional AI chat application. This project heavily uses `assistant-ui` for the chat interface.
+
+## Critical Documentation
+Always refer to these live documentation files for the latest API, components, and best practices:
+- **Core Reference**: https://www.assistant-ui.com/llms-full.txt (Full Technical Reference)
+- **High-level Map**: https://www.assistant-ui.com/llms.txt (Directives and Links)
+
+## Development Rules
+1. **Component Usage**: Always prioritize using `assistant-ui` primitives over custom implementations for chat-related UI.
+2. **Runtime Integration**: Ensure all chat components are correctly wrapped in an `AssistantRuntimeProvider`.
+3. **Styling**: Follow the existing design system (Vanilla CSS + Shadcn UI patterns).
+4. **Code Generation**: Before generating any new chat features (Generative UI, Tool Call UI), consult `llms-full.txt` to ensure compliance with the latest SDK version (v0.14+).
+5. **No Placeholders**: Never use placeholder images or components. Use the Project's existing design tokens.
+
+## Patterns
+- Use `makeAssistantToolUI` for custom tool rendering.
+- Follow the "Radix-like" composition pattern for primitives.
+- Use `useAssistantInstructions` for dynamic system prompt adjustments.

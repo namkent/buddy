@@ -6,6 +6,7 @@ import {
   useRemoteThreadListRuntime,
   useLocalRuntime,
   useAui,
+  useAuiState,
   RuntimeAdapterProvider,
   type ThreadHistoryAdapter,
   CompositeAttachmentAdapter,
@@ -30,13 +31,13 @@ interface AssistantProps {
 export const Assistant = ({ initialThreadId }: AssistantProps) => {
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: () => {
-      const aui = useAui();
+      const threadListItem = useAui().threadListItem();
       const modelAdapter = useMemo(() => {
         return createChatModelAdapter(() => {
-          const state = aui.threadListItem().getState();
+          const state = threadListItem.getState();
           return state.remoteId || state.externalId;
         });
-      }, [aui]);
+      }, [threadListItem]);
 
       const attachmentAdapter = useMemo(() => 
         new CompositeAttachmentAdapter([
@@ -69,12 +70,12 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
     adapter: {
       ...myThreadListAdapter,
       unstable_Provider: ({children}) => {
-        const aui = useAui();
+        const threadListItem = useAui().threadListItem();
 
         const history = useMemo<ThreadHistoryAdapter>(
           () => ({
             async load() {
-              const state = aui.threadListItem().getState();
+              const state = threadListItem.getState();
               const remoteId = state.remoteId || state.externalId;
               if (!remoteId) return {messages: []};
 
@@ -87,7 +88,8 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
 
                 let contentParts: any[] = [];
                 let fullText = String(m.content || "");
-                // Lọc bỏ các thẻ kỹ thuật khỏi lịch sử hiển thị
+                
+                // Tiền xử lý nội dung
                 fullText = fullText.replace(/^\[(Search|Summarize|Translate .*?)\][:\s]*/i, "");
                 
                 let isJsonArray = false;
@@ -100,7 +102,7 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
                         attachments.push({
                           id: Math.random().toString(36).substring(7),
                           type: "image",
-                          name: "", // Không hiển thị tên file khi load lại từ DB
+                          name: "", 
                           content: [{ type: "image", image: c.image }],
                           status: { type: "complete" }
                         });
@@ -113,27 +115,32 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
                 } catch {}
 
                 if (!isJsonArray) {
+                  // Phân tách logic suy nghĩ (Reasoning)
                   const thinkStart = fullText.indexOf("<think>");
                   const thinkEnd = fullText.indexOf("</think>");
 
                   if (thinkStart !== -1) {
                     if (thinkStart > 0) {
-                      contentParts.push({type: "text", text: fullText.substring(0, thinkStart)});
+                      contentParts.push({ type: "text", text: fullText.substring(0, thinkStart) });
                     }
+                    
                     if (thinkEnd !== -1) {
                       contentParts.push({
                         type: "reasoning",
-                        text: fullText.substring(thinkStart + 7, thinkEnd).trimStart()
+                        text: fullText.substring(thinkStart + 7, thinkEnd).trim()
                       });
-                      const mainText = fullText.substring(thinkEnd + 8);
+                      const mainText = fullText.substring(thinkEnd + 8).trim();
                       if (mainText.length > 0) {
-                        contentParts.push({type: "text", text: mainText});
+                        contentParts.push({ type: "text", text: mainText });
                       }
                     } else {
-                      contentParts.push({type: "reasoning", text: fullText.substring(thinkStart + 7).trimStart()});
+                      contentParts.push({ 
+                        type: "reasoning", 
+                        text: fullText.substring(thinkStart + 7).trim() 
+                      });
                     }
                   } else {
-                    contentParts.push({type: "text", text: fullText});
+                    contentParts.push({ type: "text", text: fullText });
                   }
                 }
 
@@ -145,19 +152,14 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
                     content: contentParts,
                     createdAt: new Date(m.createdAt),
                     ...(isAssistant ? {
-                      status: {type: "complete"},
+                      status: { type: "complete" },
                       metadata: {
-                        custom: {},
-                        steps: [],
-                        unstable_annotations: [],
-                        unstable_data: [],
-                        unstable_state: null
+                        steps: m.steps || [],
+                        unstable_annotations: m.annotations || [],
                       }
                     } : {
                       attachments: attachments,
-                      metadata: {
-                        custom: {}
-                      }
+                      metadata: {}
                     })
                   }
                 };
@@ -165,21 +167,21 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
                 return item;
               });
 
-              return {messages: formattedMessages};
+              return { messages: formattedMessages };
             },
 
             async append(message) {
-              const state = aui.threadListItem().getState();
+              const state = threadListItem.getState();
               let remoteId = state.remoteId;
               if (!remoteId) {
-                const initRes = await aui.threadListItem().initialize();
+                const initRes = await threadListItem.initialize();
                 remoteId = initRes.remoteId;
               }
               const adapter = createHistoryAdapter(remoteId);
               return adapter.append(message);
             },
           }),
-          [aui],
+          [threadListItem],
         );
 
         const adapters = useMemo(() => ({history}), [history]);
@@ -199,9 +201,25 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
       const { threadId } = (e as CustomEvent<{ threadId: string }>).detail;
       window.history.pushState({}, "", `/app/${threadId}`);
     };
-    window.addEventListener("meshbuddy-thread-created", handleThreadCreated);
-    return () => window.removeEventListener("meshbuddy-thread-created", handleThreadCreated);
-  }, []);
+
+    const handleThreadUpdated = (e: Event) => {
+      const { threadId, title } = (e as CustomEvent<{ threadId: string, title: string }>).detail;
+      // Cập nhật tên thread trực tiếp trên UI runtime để tránh phải load lại toàn bộ list
+      try {
+        runtime.threads.item({ id: threadId }).rename(title);
+      } catch (err) {
+        console.error("Failed to sync thread title:", err);
+      }
+    };
+
+    window.addEventListener("assistant:thread-created", handleThreadCreated);
+    window.addEventListener("assistant:thread-updated", handleThreadUpdated);
+    
+    return () => {
+      window.removeEventListener("assistant:thread-created", handleThreadCreated);
+      window.removeEventListener("assistant:thread-updated", handleThreadUpdated);
+    };
+  }, [runtime]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

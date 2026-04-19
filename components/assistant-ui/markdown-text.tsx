@@ -36,9 +36,7 @@ const MarkdownTextImpl = () => {
       className="aui-md"
       components={defaultComponents}
       componentsByLanguage={{
-        mermaid: {
-          SyntaxHighlighter: MermaidDiagram
-        },
+        mermaid: MermaidDiagram,
       }}
     />
   );

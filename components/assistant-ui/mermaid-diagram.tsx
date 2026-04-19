@@ -177,14 +177,16 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
   const [modalOpen, setModalOpen] = useState(false);
 
   const isComplete = useAuiState((s) => {
-    const isPartStreaming = s.part.status?.type === "running";
-    const isDoneGenerating = !isPartStreaming;
-    if (s.part.type !== "text") return isDoneGenerating;
+    const isRunning = s.part.status?.type === "running";
+    if (s.part.type !== "text") return !isRunning;
+    
+    // Kiểm tra xem Mermaid code block đã kết thúc chưa (có dấu đóng ```)
     const fullText = s.part.text;
     const codeIndex = fullText.indexOf(code);
-    if (codeIndex === -1) return isDoneGenerating;
+    if (codeIndex === -1) return !isRunning;
+    
     const afterCode = fullText.substring(codeIndex + code.length);
-    return afterCode.match(/^\s*```/) !== null || isDoneGenerating;
+    return afterCode.includes("```") || !isRunning;
   });
 
   useEffect(() => {

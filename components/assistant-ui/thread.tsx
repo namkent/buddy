@@ -55,7 +55,7 @@ import type { FC } from "react";
 
 export const Thread: FC = () => {
   const runtime = useAssistantRuntime();
-  const threadId = useAuiState((s) => (s as any).thread.id || (s as any).thread.remoteId || (s as any).thread.externalId);
+  const threadId = useAuiState((s) => s.thread.id);
 
   return (
     <ThreadPrimitive.Root

@@ -126,7 +126,7 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
                 body: JSON.stringify({ id: threadId, data: { title: cleanTitle } }),
               });
               // Dispatch event to refresh thread list
-              window.dispatchEvent(new CustomEvent('meshbuddy-refresh-threads', {
+              window.dispatchEvent(new CustomEvent('assistant:thread-updated', {
                 detail: { threadId, title: cleanTitle }
               }));
             }
@@ -263,7 +263,7 @@ export const myThreadListAdapter: RemoteThreadListAdapter = {
     const thread = await res.json();
     // Dispatch event để đồng bộ URL → /app/{threadId}
     window.dispatchEvent(
-      new CustomEvent("meshbuddy-thread-created", {
+      new CustomEvent("assistant:thread-created", {
         detail: { threadId: thread.id },
       })
     );
@@ -287,6 +287,10 @@ export const myThreadListAdapter: RemoteThreadListAdapter = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: remoteId, data: { title: newTitle } }),
     });
+    // Bắn event để đồng bộ UI ngay lập tức
+    window.dispatchEvent(new CustomEvent('assistant:thread-updated', {
+      detail: { threadId: remoteId, title: newTitle }
+    }));
   },
 
   async archive(remoteId: string) {
