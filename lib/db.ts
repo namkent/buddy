@@ -518,5 +518,61 @@ export const dbConnection = {
       `, [...values, limit, offset]);
       return res.rows;
     }
+  },
+  system: {
+    /**
+     * Chạy các tác vụ bảo trì định kỳ:
+     * - Xóa chat chưa lưu trữ sau 30 ngày
+     * - Xóa chat đã lưu trữ sau 365 ngày
+     * - Hạ quyền User xuống Guest nếu không hoạt động 30 ngày
+     */
+    async runMaintenance() {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        // 1. Xóa threads không lưu trữ sau 30 ngày (Tin nhắn sẽ tự xóa nhờ ON DELETE CASCADE)
+        const deletedUnarchived = await client.query(
+          "DELETE FROM chat_threads WHERE archived = FALSE AND created_at < NOW() - INTERVAL '30 days'"
+        );
+
+        // 2. Xóa threads đã lưu trữ sau 365 ngày (1 năm)
+        const deletedArchived = await client.query(
+          "DELETE FROM chat_threads WHERE archived = TRUE AND created_at < NOW() - INTERVAL '365 days'"
+        );
+
+        // 3. Hạ quyền người dùng không hoạt động (Trừ Admin role_id=3)
+        // role_id: 1=guest, 2=user, 3=admin
+        const downgradedUsers = await client.query(
+          "UPDATE users SET role_id = 1 WHERE role_id = 2 AND COALESCE(last_active, created_at) < NOW() - INTERVAL '30 days'"
+        );
+
+        const summary = `Dọn dẹp hệ thống: Xóa ${deletedUnarchived.rowCount} thread thường, ${deletedArchived.rowCount} thread lưu trữ. Hạ quyền ${downgradedUsers.rowCount} người dùng.`;
+        
+        // Ghi log hoạt động
+        await client.query(
+          "INSERT INTO system_logs (level, source, message) VALUES ($1, $2, $3)",
+          ['info', 'system', summary]
+        );
+
+        await client.query('COMMIT');
+        return { success: true, summary };
+      } catch (error: any) {
+        await client.query('ROLLBACK');
+        console.error("Maintenance Error:", error);
+        
+        // Ghi log lỗi
+        await dbConnection.logs.create({
+          level: 'error',
+          source: 'system',
+          message: 'Lỗi trong quá trình bảo trì định kỳ',
+          details: error.message
+        });
+        
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
   }
 };

@@ -293,7 +293,7 @@ export default function AdminDashboardPage() {
                       </span>
                       <Avatar className="h-9 w-9 shrink-0 border border-zinc-200 dark:border-white/5 transition-transform group-hover:scale-110">
                         <AvatarImage src={u.avatar || ""} />
-                        <AvatarFallback className="bg-indigo-500 text-white font-bold text-xs uppercase">
+                        <AvatarFallback className="bg-indigo-500 text-white text-lg uppercase">
                           {(u.user_name || "U").charAt(0)}
                         </AvatarFallback>
                       </Avatar>

@@ -122,9 +122,9 @@ export default function SystemLogsPage() {
 
         <div className="flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Level</span>
+            <span className="text-[12px] font-bold text-zinc-400 uppercase tracking-widest">Level</span>
             <Select value={level} onValueChange={setLevel}>
-              <SelectTrigger className="w-[110px] h-9 bg-white/50 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-xs">
+              <SelectTrigger className="w-[150px] h-9 bg-white/50 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-xs">
                 <SelectValue placeholder="All Levels" />
               </SelectTrigger>
               <SelectContent>
@@ -137,9 +137,9 @@ export default function SystemLogsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Source</span>
+            <span className="text-[12px] font-bold text-zinc-400 uppercase tracking-widest">Source</span>
             <Select value={source} onValueChange={setSource}>
-              <SelectTrigger className="w-[140px] h-9 bg-white/50 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-xs">
+              <SelectTrigger className="w-[150px] h-9 bg-white/50 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-xs">
                 <SelectValue placeholder="All Sources" />
               </SelectTrigger>
               <SelectContent>
@@ -212,8 +212,8 @@ export default function SystemLogsPage() {
                         {log.message}
                       </p>
                     </td>
-                    <td className="w-[200px] px-4">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="w-[200px] text-center px-4">
+                      <div className="flex text-left gap-2">
                         <div className="size-6 rounded-full bg-indigo-500/10 flex items-center justify-center">
                           <User className="size-3 text-indigo-500" />
                         </div>
@@ -221,7 +221,7 @@ export default function SystemLogsPage() {
                           <p className="text-sm font-semibold truncate leading-none mb-1">
                             {log.user_name || "System"}
                           </p>
-                          <p className="text-[12px] text-zinc-400 truncate leading-none font-bold tracking-tighter">
+                          <p className="text-[12px] text-zinc-400 truncate leading-none tracking-tighter">
                             {log.email ? log.email : "AUTO"}
                           </p>
                         </div>

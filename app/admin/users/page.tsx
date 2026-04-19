@@ -134,7 +134,7 @@ export default function AdminUsersPage() {
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10 shrink-0 border border-zinc-200 dark:border-white/5 shadow-sm">
                         <AvatarImage src={u.avatar || ""} />
-                        <AvatarFallback className="bg-indigo-500 dark:bg-indigo-600 text-white border-none shadow-sm shadow-indigo-500/20 font-bold text-sm">
+                        <AvatarFallback className="bg-indigo-500 dark:bg-indigo-600 text-white border-none shadow-sm shadow-indigo-500/20 text-lg">
                           {(u.user_name || "U").charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
