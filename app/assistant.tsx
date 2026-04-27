@@ -1,4 +1,5 @@
 "use client";
+import * as React from "react";
 
 import { useMemo, useEffect } from "react";
 import {
@@ -202,27 +203,13 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
       window.history.pushState({}, "", `/app/${threadId}`);
     };
 
-    const handleThreadUpdated = (e: Event) => {
-      const { threadId, title } = (e as CustomEvent<{ threadId: string, title: string }>).detail;
-      // Cập nhật tên thread trực tiếp trên UI runtime để tránh phải load lại toàn bộ list
-      try {
-        runtime.threads.item({ id: threadId }).rename(title);
-      } catch (err) {
-        console.error("Failed to sync thread title:", err);
-      }
-    };
-
     window.addEventListener("assistant:thread-created", handleThreadCreated);
-    window.addEventListener("assistant:thread-updated", handleThreadUpdated);
-    
-    return () => {
-      window.removeEventListener("assistant:thread-created", handleThreadCreated);
-      window.removeEventListener("assistant:thread-updated", handleThreadUpdated);
-    };
-  }, [runtime]);
+    return () => window.removeEventListener("assistant:thread-created", handleThreadCreated);
+  }, []);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <ThreadSync />
       <SidebarProvider>
         <div className="flex h-dvh w-full overflow-hidden">
           <ThreadListSidebar/>
@@ -241,4 +228,27 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
       </SidebarProvider>
     </AssistantRuntimeProvider>
   );
+};
+
+const ThreadSync = () => {
+  const aui = useAui();
+  useEffect(() => {
+    const handleThreadUpdated = (e: Event) => {
+      const { threadId, title } = (e as CustomEvent<{ threadId: string, title: string }>).detail;
+      try {
+        // useAui().threads() là cách chính thống để tương tác với thread list
+        const item = aui.threads().item({ id: threadId });
+        if (item) {
+          item.rename(title);
+        }
+      } catch (err) {
+        console.error("Failed to sync thread title:", err);
+      }
+    };
+
+    window.addEventListener("assistant:thread-updated", handleThreadUpdated);
+    return () => window.removeEventListener("assistant:thread-updated", handleThreadUpdated);
+  }, [aui]);
+
+  return null;
 };

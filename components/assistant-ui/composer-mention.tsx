@@ -3,8 +3,8 @@
 import { memo, type ComponentProps, type FC } from "react";
 import {
   ComposerPrimitive,
-  unstable_useToolMentionAdapter,
-  unstable_useMentionContext,
+  unstable_useMentionAdapter,
+  unstable_useTriggerPopoverScopeContext,
 } from "@assistant-ui/react";
 import type { TextMessagePartComponent } from "@assistant-ui/react";
 import type { Unstable_DirectiveFormatter } from "@assistant-ui/core";
@@ -24,21 +24,30 @@ function ComposerMentionRoot({
   formatLabel = defaultFormatLabel,
   categoryLabel,
   ...props
-}: ComposerPrimitive.Unstable_MentionRoot.Props & {
+}: ComposerPrimitive.Unstable_TriggerPopoverRoot.Props & {
   formatLabel?: (toolName: string) => string;
   /** Custom label for the tools category. @default "Tools" */
   categoryLabel?: string;
 }) {
-  const adapter = unstable_useToolMentionAdapter({
-    formatLabel,
-    categoryLabel,
+  const { adapter, directive } = unstable_useMentionAdapter({
+    includeModelContextTools: {
+      category: categoryLabel
+        ? { id: "tools", label: categoryLabel }
+        : undefined,
+      formatLabel,
+    },
   });
   return (
-    <ComposerPrimitive.Unstable_MentionRoot adapter={adapter} {...props}>
-      {children}
-    </ComposerPrimitive.Unstable_MentionRoot>
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot {...props}>
+      <ComposerPrimitive.Unstable_TriggerPopover char="@" adapter={adapter}>
+        <ComposerPrimitive.Unstable_TriggerPopover.Directive {...directive} />
+        {children}
+      </ComposerPrimitive.Unstable_TriggerPopover>
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
   );
 }
+
+
 
 // =============================================================================
 // Popover — floating container for the mention picker
@@ -47,9 +56,10 @@ function ComposerMentionRoot({
 function ComposerMentionPopoverRoot({
   className,
   ...props
-}: ComponentProps<typeof ComposerPrimitive.Unstable_MentionPopover>) {
+}: ComponentProps<typeof ComposerPrimitive.Unstable_TriggerPopover>) {
   return (
-    <ComposerPrimitive.Unstable_MentionPopover
+    <ComposerPrimitive.Unstable_TriggerPopover
+
       data-slot="composer-mention-popover"
       className={cn(
         "aui-composer-mention-popover absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg",
@@ -73,7 +83,7 @@ function ComposerMentionCategoriesContent({
   emptyLabel?: string;
 }) {
   return (
-    <ComposerPrimitive.Unstable_MentionCategories>
+    <ComposerPrimitive.Unstable_TriggerPopoverCategories>
       {(categories) => (
         <div
           data-slot="composer-mention-categories"
@@ -81,7 +91,7 @@ function ComposerMentionCategoriesContent({
           {...props}
         >
           {categories.map((cat) => (
-            <ComposerPrimitive.Unstable_MentionCategoryItem
+            <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
               key={cat.id}
               categoryId={cat.id}
               className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent"
@@ -92,7 +102,7 @@ function ComposerMentionCategoriesContent({
                 {cat.label}
               </span>
               <ChevronRightIcon className="size-4 text-muted-foreground" />
-            </ComposerPrimitive.Unstable_MentionCategoryItem>
+            </ComposerPrimitive.Unstable_TriggerPopoverCategoryItem>
           ))}
           {categories.length === 0 && (
             <div className="px-3 py-2 text-muted-foreground text-sm">
@@ -101,7 +111,7 @@ function ComposerMentionCategoriesContent({
           )}
         </div>
       )}
-    </ComposerPrimitive.Unstable_MentionCategories>
+    </ComposerPrimitive.Unstable_TriggerPopoverCategories>
   );
 }
 
@@ -120,10 +130,10 @@ function ComposerMentionItemsContent({
   /** Label shown when no items match. @default "No matching items" */
   emptyLabel?: string;
 }) {
-  const { isSearchMode } = unstable_useMentionContext();
+  const { isSearchMode } = unstable_useTriggerPopoverScopeContext();
 
   return (
-    <ComposerPrimitive.Unstable_MentionItems>
+    <ComposerPrimitive.Unstable_TriggerPopoverItems>
       {(items) => (
         <div
           data-slot="composer-mention-items"
@@ -131,15 +141,15 @@ function ComposerMentionItemsContent({
           {...props}
         >
           {!isSearchMode && (
-            <ComposerPrimitive.Unstable_MentionBack className="flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 text-muted-foreground text-xs uppercase tracking-wide transition-colors hover:bg-accent">
+            <ComposerPrimitive.Unstable_TriggerPopoverBack className="flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 text-muted-foreground text-xs uppercase tracking-wide transition-colors hover:bg-accent">
               <ChevronLeftIcon className="size-3.5" />
               {backLabel}
-            </ComposerPrimitive.Unstable_MentionBack>
+            </ComposerPrimitive.Unstable_TriggerPopoverBack>
           )}
 
           <div className="py-1">
             {items.map((item) => (
-              <ComposerPrimitive.Unstable_MentionItem
+              <ComposerPrimitive.Unstable_TriggerPopoverItem
                 key={item.id}
                 item={item}
                 className="flex w-full cursor-pointer flex-col items-start gap-0.5 px-3 py-2 text-left outline-none transition-colors hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent"
@@ -154,7 +164,7 @@ function ComposerMentionItemsContent({
                     {item.description}
                   </span>
                 )}
-              </ComposerPrimitive.Unstable_MentionItem>
+              </ComposerPrimitive.Unstable_TriggerPopoverItem>
             ))}
             {items.length === 0 && (
               <div className="px-3 py-2 text-muted-foreground text-sm">
@@ -164,7 +174,7 @@ function ComposerMentionItemsContent({
           </div>
         </div>
       )}
-    </ComposerPrimitive.Unstable_MentionItems>
+    </ComposerPrimitive.Unstable_TriggerPopoverItems>
   );
 }
 

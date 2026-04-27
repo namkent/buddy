@@ -67,10 +67,15 @@ export async function GET(
       }
     });
 
+    const fileName = path.basename(safePhysicalPath);
+    // Mã hóa tên file để tránh lỗi header khi có ký tự tiếng Việt/đặc biệt
+    const encodedFileName = encodeURIComponent(fileName);
+
     return new Response(stream, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=3600', // Cho phép cache trình duyệt trong 1 giờ
+        'Content-Disposition': `inline; filename*=UTF-8''${encodedFileName}`,
+        'Cache-Control': 'public, max-age=3600',
       },
     });
 

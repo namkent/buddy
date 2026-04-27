@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MES AI Service - Test Interface</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+        .section { margin-bottom: 30px; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+        .section h2 { margin-top: 0; color: #3498db; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        textarea, input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #2980b9; }
+        pre { background: #272822; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 300px; font-size: 12px; }
+        .loader { display: none; color: #f39c12; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MES AI Service - Lab 🧪</h1>
+
+        <!-- 1. Embedding -->
+        <div class="section">
+            <h2>1. Embedding (Vector)</h2>
+            <textarea id="embed-text" rows="3" placeholder="Nhập văn bản tiếng Việt để tạo vector..."></textarea>
+            <button onclick="testEmbed()">Tạo Vector</button>
+            <div id="embed-loader" class="loader">Đang xử lý...</div>
+            <pre id="embed-result">Kết quả sẽ hiển thị ở đây...</pre>
+        </div>
+
+        <!-- 2. Reranking -->
+        <div class="section">
+            <h2>2. Reranking (Xếp hạng lại)</h2>
+            <input id="rerank-query" type="text" placeholder="Câu hỏi (ví dụ: Ai là giám đốc?)">
+            <textarea id="rerank-docs" rows="4" placeholder='Nhập danh sách tài liệu (cách nhau bởi dấu xuống dòng)...'></textarea>
+            <button onclick="testRerank()">Xếp hạng lại</button>
+            <div id="rerank-loader" class="loader">Đang tính toán...</div>
+            <pre id="rerank-result">Kết quả xếp hạng...</pre>
+        </div>
+
+        <!-- 3. Speech-to-Text -->
+        <div class="section">
+            <h2>3. STT (Giọng nói -> Văn bản)</h2>
+            <input type="file" id="stt-file" accept="audio/*">
+            <button onclick="testSTT()">Chuyển đổi</button>
+            <div id="stt-loader" class="loader">Đang nhận diện giọng nói (Whisper)...</div>
+            <pre id="stt-result">Văn bản nhận diện được...</pre>
+        </div>
+
+        <!-- 4. Text-to-Speech -->
+        <div class="section">
+            <h2>4. TTS (Văn bản -> Giọng nói)</h2>
+            <textarea id="tts-text" rows="2" placeholder="Nhập câu tiếng Việt muốn máy nói..."></textarea>
+            <button onclick="testTTS()">Phát âm thanh</button>
+            <div id="tts-loader" class="loader">Đang tạo giọng nói (MMS)...</div>
+            <audio id="tts-audio" controls style="display:none; width: 100%; margin-top:10px;"></audio>
+        </div>
+
+        <!-- 5. Process File -->
+        <div class="section">
+            <h2>5. Toàn quy trình (Parse -> Split -> Embed)</h2>
+            <input type="file" id="process-file" accept=".pdf,.docx,.txt">
+            <button onclick="testProcessFile()">Xử lý tài liệu</button>
+            <div id="process-loader" class="loader">Đang đọc và tạo vector...</div>
+            <pre id="process-result">Kết quả trích xuất và vector...</pre>
+        </div>
+    </div>
+
+    <script>
+        async function apiCall(endpoint, data, isFile = false) {
+            const options = { method: 'POST' };
+            if (isFile) {
+                options.body = data;
+            } else {
+                options.headers = { 'Content-Type': 'application/json' };
+                options.body = JSON.stringify(data);
+            }
+            
+            const response = await fetch(endpoint, options);
+            if (endpoint.includes('/v1/tts') && response.ok) {
+                return await response.blob();
+            }
+            return await response.json();
+        }
+
+        async function testEmbed() {
+            const text = document.getElementById('embed-text').value;
+            const resBox = document.getElementById('embed-result');
+            const loader = document.getElementById('embed-loader');
+            loader.style.display = 'block';
+            try {
+                const res = await apiCall('/v1/embeddings', { text });
+                resBox.innerText = JSON.stringify(res, null, 2);
+            } finally { loader.style.display = 'none'; }
+        }
+
+        async function testRerank() {
+            const query = document.getElementById('rerank-query').value;
+            const docsRaw = document.getElementById('rerank-docs').value.split('\n').filter(d => d.trim());
+            const resBox = document.getElementById('rerank-result');
+            const loader = document.getElementById('rerank-loader');
+            loader.style.display = 'block';
+            try {
+                const res = await apiCall('/v1/rerank', { query, documents: docsRaw });
+                resBox.innerText = JSON.stringify(res, null, 2);
+            } finally { loader.style.display = 'none'; }
+        }
+
+        async function testSTT() {
+            const file = document.getElementById('stt-file').files[0];
+            if (!file) return alert('Hãy chọn file audio');
+            const formData = new FormData();
+            formData.append('file', file);
+            const resBox = document.getElementById('stt-result');
+            const loader = document.getElementById('stt-loader');
+            loader.style.display = 'block';
+            try {
+                const res = await apiCall('/v1/stt', formData, true);
+                resBox.innerText = JSON.stringify(res, null, 2);
+            } finally { loader.style.display = 'none'; }
+        }
+
+        async function testTTS() {
+            const text = document.getElementById('tts-text').value;
+            const audio = document.getElementById('tts-audio');
+            const loader = document.getElementById('tts-loader');
+            loader.style.display = 'block';
+            try {
+                const blob = await apiCall('/v1/tts', { text });
+                const url = URL.createObjectURL(blob);
+                audio.src = url;
+                audio.style.display = 'block';
+                audio.play();
+            } finally { loader.style.display = 'none'; }
+        }
+
+        async function testProcessFile() {
+            const file = document.getElementById('process-file').files[0];
+            if (!file) return alert('Hãy chọn file PDF/Word');
+            const formData = new FormData();
+            formData.append('file', file);
+            const resBox = document.getElementById('process-result');
+            const loader = document.getElementById('process-loader');
+            loader.style.display = 'block';
+            try {
+                const res = await apiCall('/v1/process-file', formData, true);
+                resBox.innerText = JSON.stringify(res, null, 2);
+            } finally { loader.style.display = 'none'; }
+        }
+    </script>
+</body>
+</html>

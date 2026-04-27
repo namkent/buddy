@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type FC, memo, useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { Readability } from "@mozilla/readability";
 import TiptapEditor from "@/components/admin/tiptap-editor";
+import DocumentViewer from "@/components/admin/document-viewer";
 import {
   Plus, FolderOpen, Trash2, Loader2, Files, ChevronRight,
   FileText, UploadCloud, XCircle, Clock, CheckCircle2,
   Calendar, Search, Filter, Info, Mail, AlertCircle,
   FileCode, FileJson, FileType, FileSignature, FileArchive, Edit2,
-  RefreshCw, Eye, EyeOff, GripVertical
+  RefreshCw, GripVertical
 } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Switch } from "@/components/ui/switch";
@@ -59,6 +61,7 @@ export default function KnowledgeBasePage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Manual content state
   const [isContentOpen, setIsContentOpen] = useState(false);
@@ -77,11 +80,22 @@ export default function KnowledgeBasePage() {
   // Logs Drawer state
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
+  
+  // Document Viewer states
+  const [viewingFile, setViewingFile] = useState<any | null>(null);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  
   const [retryingFileId, setRetryingFileId] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  // Crawl URL state
+  const [isCrawlOpen, setIsCrawlOpen] = useState(false);
+  const [crawlUrl, setCrawlUrl] = useState("");
+  const [crawling, setCrawling] = useState(false);
+
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
   const selectedGroupRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -97,8 +111,13 @@ export default function KnowledgeBasePage() {
   useEffect(() => {
     if (selectedGroupId) {
       fetchFiles(selectedGroupId);
+      setupSSE(selectedGroupId);
     } else {
       setFiles([]);
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
     }
   }, [selectedGroupId]);
 
@@ -157,8 +176,43 @@ export default function KnowledgeBasePage() {
     finally { setLoadingFiles(false); }
   };
 
+  const setupSSE = (groupId: number) => {
+    if (sseRef.current) {
+      sseRef.current.close();
+    }
+
+    const aiServiceUrl = process.env.NEXT_PUBLIC_AI_SERVICE_URL || "http://localhost:3005";
+    const sse = new EventSource(`${aiServiceUrl}/v1/rag/events/${groupId}`);
+    sseRef.current = sse;
+
+    sse.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.fileId) {
+          setFiles(prev => prev.map(f => 
+            String(f.id) === String(data.fileId) 
+              ? { ...f, progress: data.progress, status: data.status, stage: data.stage } 
+              : f
+          ));
+          
+          if (data.status === 'completed' || data.status === 'error') {
+            fetchGroups(); // Refresh counts
+          }
+        }
+      } catch (err) {
+        console.error("SSE parse error:", err);
+      }
+    };
+
+    sse.onerror = () => {
+      console.warn("SSE connection lost, falling back to polling if needed.");
+      sse.close();
+    };
+  };
+
   const checkAndStartPolling = (currentFiles: any[]) => {
     const hasPending = currentFiles.some(f => f.status === "pending" || f.status === "processing");
+    // Giữ polling như một fallback cho các thay đổi khác hoặc nếu SSE lỗi
     if (hasPending) {
       if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(async () => {
@@ -167,14 +221,28 @@ export default function KnowledgeBasePage() {
         const res = await fetch(`/api/admin/knowledge/groups/${currentId}/files`);
         const data = await res.json();
         if (data.files) {
-          setFiles(data.files);
+          setFiles(prev => {
+            // Merge polling data with current state to preserve SSE progress
+            return data.files.map((newFile: any) => {
+              const existingFile = prev.find(f => f.id === newFile.id);
+              if (existingFile && existingFile.status === 'processing' && newFile.status === 'processing') {
+                // Preserve SSE state for active processing
+                return {
+                  ...newFile,
+                  progress: existingFile.progress > newFile.progress ? existingFile.progress : newFile.progress,
+                  stage: existingFile.stage || newFile.stage
+                };
+              }
+              return newFile;
+            });
+          });
           if (!data.files.some((f: any) => f.status === "pending" || f.status === "processing")) {
             clearInterval(pollingRef.current!);
             pollingRef.current = null;
             fetchGroups(); // Refresh group counts
           }
         }
-      }, 3000);
+      }, 5000); // Polling chậm hơn khi có SSE
     }
   };
 
@@ -220,17 +288,174 @@ export default function KnowledgeBasePage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  /**
+   * Chuyển một URL ảnh sang Base64 thông qua <img> + <canvas>.
+   * Phương pháp này hoạt động tốt hơn fetch() vì trình duyệt cho phép
+   * thẻ <img> tải ảnh cross-origin mà không cần CORS headers.
+   */
+  const imageUrlToBase64 = (url: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous'; // Thử tải với CORS trước
+
+      const tryCanvas = (imgEl: HTMLImageElement) => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = imgEl.naturalWidth;
+          canvas.height = imgEl.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(imgEl, 0, 0);
+          const dataUrl = canvas.toDataURL('image/png');
+          resolve(dataUrl);
+        } catch {
+          resolve(null); // Canvas bị tainted (CORS chặn đọc pixel)
+        }
+      };
+
+      img.onload = () => tryCanvas(img);
+
+      img.onerror = () => {
+        // Nếu CORS anonymous bị chặn, thử lại không có crossOrigin
+        const img2 = new Image();
+        img2.onload = () => tryCanvas(img2);
+        img2.onerror = () => {
+          console.warn('[Crawl] Image failed to load:', url);
+          resolve(null);
+        };
+        img2.src = url;
+      };
+
+      img.src = url;
+    });
+  };
+
+  const convertImagesToBase64 = async (html: string, baseUrl?: string) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const images = Array.from(doc.querySelectorAll('img'));
+    
+    const imagePromises = images.map(async (img) => {
+      // === Bước 1: Tìm URL ảnh thật (xử lý lazy-loading) ===
+      let src = img.getAttribute('data-src')
+        || img.getAttribute('data-lazy-src')
+        || img.getAttribute('data-original')
+        || img.getAttribute('data-actualsrc')
+        || null;
+
+      // Thử lấy từ srcset (lấy ảnh có độ phân giải cao nhất)
+      if (!src) {
+        const srcset = img.getAttribute('data-srcset') || img.getAttribute('srcset');
+        if (srcset) {
+          const candidates = srcset.split(',').map(s => s.trim().split(/\s+/));
+          // Sắp xếp theo kích thước giảm dần, lấy URL lớn nhất
+          candidates.sort((a, b) => {
+            const sizeA = parseInt(a[1] || '0');
+            const sizeB = parseInt(b[1] || '0');
+            return sizeB - sizeA;
+          });
+          src = candidates[0]?.[0] || null;
+        }
+      }
+
+      // Nếu không có lazy-loading attr, dùng src gốc
+      if (!src) {
+        src = img.getAttribute('src');
+      }
+
+      if (!src) return;
+
+      // Bỏ qua SVG placeholder (ảnh giả dạng data:image/svg+xml)
+      if (src.startsWith('data:image/svg+xml')) return;
+      // Bỏ qua ảnh Base64 đã có sẵn
+      if (src.startsWith('data:')) return;
+
+      // === Bước 2: Resolve URL tương đối ===
+      if (baseUrl && !src.startsWith('http') && !src.startsWith('//')) {
+        try {
+          src = new URL(src, baseUrl).href;
+        } catch {
+          // Fallback
+        }
+      }
+      if (src.startsWith('//')) {
+        src = 'https:' + src;
+      }
+
+      if (!src.startsWith('http')) return;
+
+      // === Bước 3: Chuyển sang Base64 ===
+      // Ưu tiên: Dùng <img> + <canvas>
+      const base64 = await imageUrlToBase64(src);
+      if (base64 && base64 !== 'data:,' && !base64.startsWith('data:image/svg+xml')) {
+        img.setAttribute('src', base64);
+        // Xóa các thuộc tính lazy-loading để tránh nhầm lẫn
+        img.removeAttribute('data-src');
+        img.removeAttribute('data-lazy-src');
+        img.removeAttribute('data-original');
+        img.removeAttribute('data-srcset');
+        img.removeAttribute('srcset');
+        img.removeAttribute('loading');
+        return;
+      }
+
+      // Fallback: Dùng fetch
+      try {
+        const response = await fetch(src, { mode: 'cors' });
+        const blob = await response.blob();
+        // Bỏ qua nếu fetch trả về SVG
+        if (blob.type.includes('svg')) return;
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+        img.setAttribute('src', dataUrl);
+        img.removeAttribute('data-src');
+        img.removeAttribute('srcset');
+      } catch (err) {
+        console.warn('[Crawl] Could not convert image to Base64:', src);
+      }
+    });
+
+    await Promise.all(imagePromises);
+    return doc.body.innerHTML;
+  };
+
   const handleUpload = async () => {
     if (!selectedFile || !selectedGroupId) return;
     setUploading(true);
+    setUploadProgress(0);
 
     const formData = new FormData();
     formData.append("file", selectedFile);
     formData.append("groupId", selectedGroupId.toString());
 
     try {
-      const res = await fetch("/api/admin/knowledge/files", { method: "POST", body: formData });
-      const data = await res.json();
+      const xhr = new XMLHttpRequest();
+      
+      const uploadPromise = new Promise((resolve, reject) => {
+        xhr.upload.addEventListener("progress", (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(percent);
+          }
+        });
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(JSON.parse(xhr.responseText));
+          } else {
+            reject(new Error(xhr.responseText));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.open("POST", "/api/admin/knowledge/files");
+        xhr.send(formData);
+      });
+
+      const data: any = await uploadPromise;
       if (data.file) {
         setFiles(prev => [data.file, ...prev]);
         setSelectedFile(null);
@@ -238,8 +463,13 @@ export default function KnowledgeBasePage() {
         checkAndStartPolling([data.file, ...files]);
         toast.success("Upload successful");
       }
-    } catch { toast.error("Failed to upload file"); }
-    finally { setUploading(false); }
+    } catch (err) { 
+      console.error(err);
+      toast.error("Failed to upload file"); 
+    } finally { 
+      setUploading(false); 
+      setUploadProgress(0);
+    }
   };
 
   const handleSaveContent = async () => {
@@ -249,12 +479,15 @@ export default function KnowledgeBasePage() {
     }
     setSavingContent(true);
     try {
+      // Chuyển đổi ảnh internet sang Base64 để hỗ trợ server offline
+      const processedContent = await convertImagesToBase64(manualContent);
+      
       const res = await fetch("/api/admin/knowledge/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: manualTitle,
-          content: manualContent,
+          content: processedContent,
           groupId: selectedGroupId
         }),
       });
@@ -269,6 +502,86 @@ export default function KnowledgeBasePage() {
       }
     } catch { toast.error("Failed to save content"); }
     finally { setSavingContent(false); }
+  };
+
+  const handleCrawl = async () => {
+    if (!crawlUrl.trim() || !selectedGroupId) return;
+
+    // === Bước 0: Decode & Validate URL ===
+    let decodedUrl = crawlUrl.trim();
+
+    // Decode URL nếu đã bị encode (ví dụ: %3A → :, %2F → /)
+    try {
+      decodedUrl = decodeURIComponent(decodedUrl);
+    } catch {
+      // Nếu decodeURIComponent thất bại, giữ nguyên URL gốc
+    }
+
+    // Tự động thêm https:// nếu user quên ghi protocol
+    if (!/^https?:\/\//i.test(decodedUrl)) {
+      decodedUrl = 'https://' + decodedUrl;
+    }
+
+    // Kiểm tra URL hợp lệ
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(decodedUrl);
+    } catch {
+      toast.error('URL không hợp lệ. Vui lòng kiểm tra lại địa chỉ.');
+      return;
+    }
+
+    // Chỉ chấp nhận http và https
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      toast.error('Chỉ hỗ trợ URL dạng http:// hoặc https://');
+      return;
+    }
+
+    // Kiểm tra hostname có tồn tại
+    if (!parsedUrl.hostname || parsedUrl.hostname.length < 2) {
+      toast.error('URL thiếu tên miền (hostname). Ví dụ: https://example.com/article');
+      return;
+    }
+
+    setCrawling(true);
+    try {
+      // 1. Fetch HTML qua trình duyệt (Lưu ý: Có thể bị chặn bởi CORS nếu site không cho phép)
+      const res = await fetch(decodedUrl);
+      if (!res.ok) throw new Error(`Không thể truy cập URL (HTTP ${res.status}). Có thể bị chặn bởi CORS.`);
+      const html = await res.text();
+
+      // 2. Phân tích nội dung sạch bằng Readability
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+
+      // Inject base URL để browser resolve relative paths đúng
+      const baseEl = doc.createElement('base');
+      baseEl.href = decodedUrl;
+      doc.head.appendChild(baseEl);
+
+      const reader = new Readability(doc);
+      const article = reader.parse();
+
+      if (!article) {
+        throw new Error("Không thể trích xuất nội dung từ URL này. Trang có thể không có nội dung bài viết.");
+      }
+
+      // 3. Xử lý ảnh sang Base64 (có hỗ trợ URL tương đối)
+      const processedHtml = await convertImagesToBase64(article.content || "", decodedUrl);
+
+      // 4. Chuyển kết quả vào trình soạn thảo thủ công
+      setManualTitle(article.title || "Crawled Content");
+      setManualContent(processedHtml);
+      
+      setIsCrawlOpen(false);
+      setIsContentOpen(true); // Mở trình soạn thảo để review
+      toast.success("Đã crawl thành công! Vui lòng kiểm tra nội dung trước khi lưu.");
+      setCrawlUrl("");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Crawl thất bại. Hãy thử copy nội dung thủ công nếu CORS bị chặn.");
+    } finally {
+      setCrawling(false);
+    }
   };
 
   const handleUpdateFile = async (id: number, data: { file_name?: string, active?: boolean }) => {
@@ -515,6 +828,43 @@ export default function KnowledgeBasePage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <Dialog open={isCrawlOpen} onOpenChange={setIsCrawlOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" disabled={!selectedGroupId} className="border-zinc-300 dark:border-white/10 shadow-sm transition-colors gap-2">
+                <Search className="size-3.5" />
+                Crawl URL
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Crawl Content from URL</DialogTitle>
+                <DialogDescription asChild>
+                  <div>
+                    Enter a URL to automatically extract its main content and images.
+                    <div className="mt-2 text-amber-600 dark:text-amber-400 font-medium text-xs">Note: Target site must allow CORS or use a CORS-bypass extension.</div>
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Target URL</label>
+                  <Input 
+                    value={crawlUrl} 
+                    onChange={e => setCrawlUrl(e.target.value)} 
+                    placeholder="https://example.com/article" 
+                    onKeyDown={(e) => e.key === 'Enter' && handleCrawl()}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" size="sm" onClick={() => setIsCrawlOpen(false)}>Cancel</Button>
+                <Button size="sm" onClick={handleCrawl} disabled={crawling || !crawlUrl.trim()} className="bg-indigo-600">
+                  {crawling ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-3.5" />}
+                  Crawl Now
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={isContentOpen} onOpenChange={setIsContentOpen}>
             <DialogTrigger asChild>
@@ -597,9 +947,13 @@ export default function KnowledgeBasePage() {
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={() => setIsUploadOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleUpload} disabled={!selectedFile || !selectedGroupId || uploading} className="bg-indigo-600">
-                  {uploading && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  Upload
+                <Button size="sm" onClick={handleUpload} disabled={!selectedFile || !selectedGroupId || uploading} className="bg-indigo-600 w-24">
+                  {uploading ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold">{uploadProgress}%</span>
+                      <Loader2 className="size-3 animate-spin" />
+                    </div>
+                  ) : "Upload"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -755,7 +1109,7 @@ export default function KnowledgeBasePage() {
                     <th className="px-4 font-bold text-left">File name</th>
                     <th className="w-[100px] px-4 font-bold text-center">Type</th>
                     <th className="w-[100px] px-4 font-bold text-center">Size</th>
-                    <th className="w-[150px] px-4 font-bold text-center">Status</th>
+                    <th className="w-[180px] px-4 font-bold text-center">Status</th>
                     <th className="w-[100px] px-4 font-bold text-center">Active</th>
                     <th className="w-[180px] px-4 font-bold text-center">Action</th>
                   </tr>
@@ -796,9 +1150,16 @@ export default function KnowledgeBasePage() {
                                 {getFileIcon(file.file_name)}
                               </div>
                               <div className="min-w-0">
-                                <p className={cn("font-semibold text-zinc-900 dark:text-zinc-100 truncate", !file.active && "text-zinc-400")} title={file.file_name}>
+                                <button
+                                  className={cn("font-semibold text-zinc-900 dark:text-zinc-100 truncate text-left hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors cursor-pointer block max-w-full", !file.active && "text-zinc-400")}
+                                  title={`Xem: ${file.file_name}`}
+                                  onClick={() => {
+                                    setViewingFile(file);
+                                    setIsViewOpen(true);
+                                  }}
+                                >
                                   {file.file_name}
-                                </p>
+                                </button>
                                 <p className="text-[11px] text-zinc-500">
                                   {new Date(file.created_at).toLocaleDateString()} {new Date(file.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </p>
@@ -817,20 +1178,46 @@ export default function KnowledgeBasePage() {
                                 : `${(Number(file.file_size) / 1024).toFixed(1)} KB`
                             ) : "0 KB"}
                           </td>
-                          <td className="w-[150px] px-4">
-                            <div className="flex justify-center">
+                          <td className="w-[180px] px-4">
+                            <div className="flex flex-col items-center justify-center gap-0.5">
                               <div
                                 className={cn(
-                                  "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-tight",
+                                  "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-tight px-2 py-0.5 rounded-full transition-all",
                                   status.color,
-                                  file.status === "error" && "cursor-pointer hover:underline decoration-dotted",
+                                  file.status === "error" ? "cursor-pointer hover:bg-red-500/10 ring-1 ring-inset ring-red-500/20" : "cursor-default",
                                   !file.active && "opacity-40"
                                 )}
-                                onClick={() => file.status === "error" && openErrorLog(file)}
+                                onClick={(e) => {
+                                  if (file.status === "error") {
+                                    e.stopPropagation();
+                                    openErrorLog(file);
+                                  }
+                                }}
                               >
                                 {status.icon}
                                 {status.label}
+                                {file.status === "error" && <Info className="size-3 ml-0.5" />}
                               </div>
+
+                              {/* Progress Stage & Bar for Processing state */}
+                              {file.status === "processing" && (
+                                <div className="flex flex-col items-center w-full mt-0.5">
+                                  {file.stage && (
+                                    <span className="text-[9px] text-zinc-400 font-medium mb-0.5 animate-pulse">
+                                      {file.stage}
+                                    </span>
+                                  )}
+                                  <div className="w-full max-w-[140px] flex items-center gap-2">
+                                    <div className="flex-1 h-1 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-blue-500 transition-all duration-500" 
+                                        style={{ width: `${file.progress || 0}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[10px] text-blue-600 font-bold shrink-0">{file.progress || 0}%</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="w-[100px] px-4 text-center">
@@ -858,6 +1245,7 @@ export default function KnowledgeBasePage() {
                                   <RefreshCw className="size-3.5" />
                                 </Button>
                               )}
+
                               <Button
                                 variant="ghost" size="icon"
                                 className="size-8 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
@@ -873,22 +1261,9 @@ export default function KnowledgeBasePage() {
                                 <Edit2 className="size-3.5" />
                               </Button>
                               <Button
-                                variant="ghost" size="icon"
-                                className="size-8 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
-                                asChild
-                              >
-                                <a
-                                  href={file.file_path.startsWith('http') ? file.file_path : `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${file.file_path}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  title="View Document"
-                                >
-                                  <Info className="size-3.5" />
-                                </a>
-                              </Button>
-                              <Button
-                                variant="ghost" size="icon"
-                                className="size-8 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
                                 onClick={() => deleteFile(file.id)}
                                 title="Delete Document"
                               >
@@ -906,6 +1281,13 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
       </div>
+
+      {/* Document Viewer Modal */}
+      <DocumentViewer
+        isOpen={isViewOpen}
+        onClose={() => setIsViewOpen(false)}
+        file={viewingFile}
+      />
 
       <AdminLogsDrawer
         open={logDrawerOpen}

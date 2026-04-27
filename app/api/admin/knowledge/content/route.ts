@@ -48,9 +48,10 @@ export async function POST(req: Request) {
     await pool.query('UPDATE knowledge_files SET file_path = $1 WHERE id = $2', [fileUrlPath, dbFile.id]);
     dbFile.file_path = fileUrlPath;
 
-    // 6. Kích hoạt bộ xử lý RAG (Python Service)
-    const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
-    fetch(`${pythonUrl}/rag/process`, {
+    // 6. Kích hoạt bộ xử lý RAG (AI Service)
+    const aiServiceUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:3005/v1";
+    console.log(`[RAG-Trigger] Content save, path: ${physicalPath}`);
+    fetch(`${aiServiceUrl}/rag/process`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
         file_name: title + ".html"
       })
     }).catch(err => {
-      console.error("Trigger Python RAG fail:", err);
+      console.error("Trigger AI RAG fail:", err);
       dbConnection.knowledge.updateFileStatus(dbFile.id, "error_triggering");
     });
 

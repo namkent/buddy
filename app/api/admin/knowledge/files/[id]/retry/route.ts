@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dbConnection, pool } from '@/lib/db';
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import path from 'path';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -30,31 +30,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // file_path trong DB có dạng /group_1/file_5/origin/hash.pdf
     const physicalPath = path.join(/*turbopackIgnore: true*/ storageRoot, file.file_path);
 
-    // 4. Gọi Python xử lý
-    const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
-    
+    // 4. Gọi AI Service xử lý
+    const aiServiceUrl = process.env.AI_SERVICE_URL || "http://localhost:3005/v1";
+
     // Gửi yêu cầu bất đồng bộ
-    fetch(`${pythonUrl}/rag/process`, {
+    fetch(`${aiServiceUrl}/rag/process`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        file_id: file.id, 
+      body: JSON.stringify({
+        file_id: file.id,
         group_id: file.group_id,
         file_path: physicalPath,
         file_name: file.file_name
       })
     }).catch(err => {
-        console.error("Retry RAG Fail:", err);
-        dbConnection.knowledge.updateFileStatus(file.id, "error_triggering", err.message);
+      console.error("Retry RAG Fail:", err);
+      dbConnection.knowledge.updateFileStatus(file.id, "error_triggering", err.message);
     });
 
     // 5. Ghi Log
     await dbConnection.logs.create({
-        user_id: (session.user as any).userId,
-        level: 'info',
-        source: 'knowledge_base',
-        message: `Kích hoạt lại xử lý RAG cho tài liệu: ${file.file_name} (ID: ${fileId})`,
-        details: JSON.stringify({ file_id: fileId, group_id: file.group_id })
+      user_id: (session.user as any).userId,
+      level: 'info',
+      source: 'knowledge_base',
+      message: `Kích hoạt lại xử lý RAG cho tài liệu: ${file.file_name} (ID: ${fileId})`,
+      details: JSON.stringify({ file_id: fileId, group_id: file.group_id })
     });
 
     return NextResponse.json({ success: true });

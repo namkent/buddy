@@ -1,8 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Override Tailwind v4 preflight: prevents html { overflow-y: scroll } from creating
-   an outer scrollbar on the main chat layout which uses h-dvh/overflow-hidden containers */
 html,
 body {
   overflow: hidden;
@@ -50,12 +48,13 @@ body {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --animate-shimmer: shimmer-sweep var(--shimmer-duration, 1000ms) linear
-    infinite both;
+  --animate-shimmer: shimmer-sweep var(--shimmer-duration, 1000ms) linear infinite both;
+
   @keyframes shimmer-sweep {
     from {
       background-position: 150% 0;
     }
+
     to {
       background-position: -100% 0;
     }
@@ -135,7 +134,6 @@ body {
   * {
     @apply border-border outline-ring/50;
     scrollbar-color: transparent transparent;
-    transition: scrollbar-color 0.3s ease;
   }
 
   *:hover {
@@ -143,8 +141,8 @@ body {
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 4px !important;
+    height: 4px !important;
   }
 
   ::-webkit-scrollbar-button {
@@ -160,8 +158,7 @@ body {
 
   ::-webkit-scrollbar-thumb {
     background-color: transparent;
-    border-radius: 10px;
-    transition: background-color 0.3s ease;
+    border-radius: 5px !important;
   }
 
   *:hover::-webkit-scrollbar-thumb,
@@ -185,13 +182,18 @@ body {
     @apply bg-background text-foreground;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     letter-spacing: -0.01em;
   }
 
-  pre, 
-  code, 
-  .aui-md pre, 
+  pre,
+  code,
+  .aui-md pre,
   .aui-md code,
   .aui-mermaid-diagram {
     font-family: var(--font-sans-code), monospace !important;
@@ -200,7 +202,7 @@ body {
     tab-size: 4;
     font-feature-settings: "liga" 0, "clig" 0, "calt" 0 !important;
     font-variant-ligatures: none !important;
-    white-space: pre !important; 
+    white-space: pre !important;
     text-align: left !important;
   }
 

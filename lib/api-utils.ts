@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { dbConnection } from "./db";
 
@@ -23,11 +23,11 @@ export interface AuthenticatedUser {
  */
 export async function requireAuth() {
   const session = await getServerSession(authOptions);
-  
+
   if (!session || !session.user) {
-    return { 
+    return {
       error: errorResponse("Bạn chưa đăng nhập. Vui lòng đăng nhập để tiếp tục.", 401),
-      user: null 
+      user: null
     };
   }
 
@@ -48,9 +48,9 @@ export async function requireAuth() {
  */
 export async function requireAdmin() {
   const { error, user } = await requireAuth();
-  
+
   if (error) return { error, user: null };
-  
+
   if (user?.role !== "admin") {
     return {
       error: errorResponse("Bạn không có quyền truy cập tính năng này.", 403),

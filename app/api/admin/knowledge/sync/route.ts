@@ -10,13 +10,13 @@ export async function POST() {
   if (error) return error;
 
   try {
-    const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
+    const aiServiceUrl = process.env.AI_SERVICE_URL || "http://localhost:3005/v1";
     
-    // Gọi Python service để thực hiện đồng bộ hóa vật lý
-    const res = await fetch(`${pythonUrl}/rag/sync`, { method: "POST" });
+    // Gọi AI service để thực hiện đồng bộ hóa vật lý
+    const res = await fetch(`${aiServiceUrl}/rag/sync`, { method: "POST" });
     const data = await res.json();
 
-    if (!res.ok) throw new Error(data.detail || "RAG Sync failed");
+    if (!res.ok) throw new Error(data.error || "RAG Sync failed");
 
     // Ghi lại log hành động đồng bộ
     await logAdminAction(admin!.userId, 'knowledge_base', `Đã hoàn thành đồng bộ hóa dữ liệu. Số tài liệu hợp lệ: ${data.valid_count}`, data);

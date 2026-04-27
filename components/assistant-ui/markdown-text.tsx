@@ -36,8 +36,9 @@ const MarkdownTextImpl = () => {
       className="aui-md"
       components={defaultComponents}
       componentsByLanguage={{
-        mermaid: MermaidDiagram,
+        mermaid: { SyntaxHighlighter: MermaidDiagram },
       }}
+
     />
   );
 };
@@ -148,15 +149,47 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  a: ({ className, href, children, ...props }) => {
+    const isCitation = href?.startsWith("cite:");
+    
+    const handleClick = (e: React.MouseEvent) => {
+      if (href && href.startsWith("cite:")) {
+
+        e.preventDefault();
+        try {
+          // Parse citation data: cite:id=...&path=...&name=...&page=...
+          const params = new URLSearchParams(href.substring(5));
+
+          const fileData = {
+            id: parseInt(params.get("id") || "0"),
+            file_path: params.get("path"),
+            file_name: params.get("name"),
+            page: params.get("page")
+          };
+          
+          window.dispatchEvent(new CustomEvent("open-document", { detail: fileData }));
+        } catch (err) {
+          console.error("Failed to parse citation link:", err);
+        }
+      }
+    };
+
+
+    return (
+      <a
+        href={href}
+        onClick={handleClick}
+        className={cn(
+          "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer",
+          isCitation && "text-indigo-600 dark:text-indigo-400 font-medium no-underline hover:underline decoration-dotted",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(

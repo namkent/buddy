@@ -1,6 +1,6 @@
 import { Assistant } from "./assistant";
 import { getServerSession } from "next-auth";
-import { authOptions } from "./api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { GuestModal } from "@/components/ui/guest-modal";
 import { dbConnection } from "@/lib/db";
 

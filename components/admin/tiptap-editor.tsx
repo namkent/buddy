@@ -98,12 +98,8 @@ export default function TiptapEditor({ content, onChange, placeholder }: TiptapE
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
-      Underline,
       Image.configure({
         allowBase64: true,
-      }),
-      Link.configure({
-        openOnClick: false,
       }),
       Placeholder.configure({
         placeholder: placeholder || "Nhập nội dung tại đây...",

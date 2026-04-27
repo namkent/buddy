@@ -1,2 +1,5 @@
+packages:
+  - "ai-service"
+
 onlyBuiltDependencies:
   - sharp

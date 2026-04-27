@@ -8,6 +8,8 @@ import {
 } from "@/components/assistant-ui/attachment";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
+import { Sources } from "@/components/assistant-ui/sources";
+
 import { MessageTiming } from "@/components/assistant-ui/message-timing";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -24,7 +26,7 @@ import {
   SuggestionPrimitive,
   ThreadPrimitive,
   useAuiState,
-  useAssistantRuntime
+  useAui
 } from "@assistant-ui/react";
 import { useSession } from "next-auth/react";
 import {
@@ -45,6 +47,7 @@ import {
   Library,
   X,
 } from "lucide-react";
+import DocumentViewer from "@/components/admin/document-viewer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,8 +57,17 @@ import {
 import type { FC } from "react";
 
 export const Thread: FC = () => {
-  const runtime = useAssistantRuntime();
-  const threadId = useAuiState((s) => s.thread.id);
+  const aui = useAui();
+  const threadId = useAuiState((s) => s.threads.mainThreadId);
+  const [viewerFile, setViewerFile] = useState<any>(null);
+
+  useEffect(() => {
+    const handleOpenDoc = (e: any) => {
+      if (e.detail) setViewerFile(e.detail);
+    };
+    window.addEventListener("open-document", handleOpenDoc);
+    return () => window.removeEventListener("open-document", handleOpenDoc);
+  }, []);
 
   return (
     <ThreadPrimitive.Root
@@ -84,6 +96,11 @@ export const Thread: FC = () => {
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
+      <DocumentViewer
+        isOpen={!!viewerFile}
+        onClose={() => setViewerFile(null)}
+        file={viewerFile}
+      />
     </ThreadPrimitive.Root>
   );
 };
@@ -135,7 +152,7 @@ const ThreadWelcome: FC = () => {
   if (!isGuest && userName && title.includes("Xin chào!")) {
     displayTitle = (
       <>
-        Xin chào <span className="text-indigo-600 dark:text-indigo-400 font-bold tracking-tight">{userName}</span> !
+        Xin chào <span className="text-indigo-600 dark:text-indigo-400 font-bold tracking-tight">{userName}</span>
       </>
     );
   }
@@ -158,7 +175,7 @@ const ThreadWelcome: FC = () => {
 };
 
 const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
-  const runtime = useAssistantRuntime();
+  const aui = useAui();
   if (!suggestions || suggestions.length === 0) return null;
   return (
     <div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
@@ -166,7 +183,7 @@ const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
         <div key={sug.id} className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 @md:nth-[n+3]:block nth-[n+3]:hidden animate-in fill-mode-both duration-200">
           <Button
             variant="ghost"
-            onClick={() => runtime.thread.append({ role: "user", content: [{ type: "text", text: sug.prompt }] })}
+            onClick={() => aui.thread().append({ role: "user", content: [{ type: "text", text: sug.prompt }] })}
             className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-3xl border bg-background px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
           >
             <span className="aui-thread-welcome-suggestion-text-1 font-medium">{sug.title}</span>
@@ -178,12 +195,27 @@ const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
 };
 
 const Composer: FC = () => {
-  const runtime = useAssistantRuntime();
+  const aui = useAui();
 
   const [chatMode, setChatMode] = useState<"normal" | "search" | "translate">("normal");
   const [targetLang, setTargetLang] = useState<{ id: string, name: string, emoji: string }>({ id: "vi", name: "Vietnamese", emoji: "🇻🇳" });
   const [knowledgeGroups, setKnowledgeGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
+  const [features, setFeatures] = useState<{ translate: boolean, search: boolean, memory: boolean }>({
+    translate: true,
+    search: true,
+    memory: true
+  });
+
+  useEffect(() => {
+    // Fetch initial config for features
+    fetch("/api/chat/config")
+      .then(r => r.json())
+      .then(d => {
+        if (d.features) setFeatures(d.features);
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (chatMode === "search") {
@@ -205,10 +237,10 @@ const Composer: FC = () => {
   const resetMode = () => setChatMode("normal");
 
   const handleSend = () => {
-    const text = runtime.thread.composer.getState().text.trim();
+    const text = aui.thread().composer().getState().text.trim();
     if (!text) return;
 
-    runtime.thread.append({
+    aui.thread().append({
       role: "user",
       content: [{ type: "text", text: text }],
       metadata: {
@@ -219,7 +251,7 @@ const Composer: FC = () => {
         }
       } as any
     });
-    runtime.thread.composer.setText("");
+    aui.thread().composer().setText("");
   };
 
   return (
@@ -319,6 +351,7 @@ const Composer: FC = () => {
             onSend={handleSend}
             chatMode={chatMode}
             resetMode={resetMode}
+            features={features}
           />
         </div>
       </ComposerPrimitive.AttachmentDropzone>
@@ -330,30 +363,35 @@ const ComposerAction: FC<{
   onModeSelect: (m: any, l?: any) => void,
   onSend: () => void,
   chatMode: string,
-  resetMode: () => void
-}> = ({ onModeSelect, onSend, chatMode, resetMode }) => {
+  resetMode: () => void,
+  features: { translate: boolean, search: boolean, memory: boolean }
+}> = ({ onModeSelect, onSend, chatMode, resetMode, features }) => {
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <div className="flex items-center gap-1">
         <ComposerAddAttachment />
 
-        <div className="w-px h-4 bg-border mx-1" />
+        {(features.search || features.translate) && <div className="w-px h-4 bg-border mx-1" />}
 
-        <TooltipIconButton
-          tooltip="Internal Search (RAG)"
-          onClick={() => onModeSelect("search")}
-          className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "search" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
-        >
-          <Library className="size-4" />
-        </TooltipIconButton>
+        {features.search && (
+          <TooltipIconButton
+            tooltip="Internal Search (RAG)"
+            onClick={() => onModeSelect("search")}
+            className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "search" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
+          >
+            <Library className="size-4" />
+          </TooltipIconButton>
+        )}
 
-        <TooltipIconButton
-          tooltip="Translate Mode"
-          onClick={() => onModeSelect("translate")}
-          className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "translate" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
-        >
-          <LanguagesIcon className="size-4" />
-        </TooltipIconButton>
+        {features.translate && (
+          <TooltipIconButton
+            tooltip="Translate Mode"
+            onClick={() => onModeSelect("translate")}
+            className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "translate" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
+          >
+            <LanguagesIcon className="size-4" />
+          </TooltipIconButton>
+        )}
 
         {chatMode !== "normal" && (
           <TooltipIconButton
@@ -418,8 +456,10 @@ const AssistantMessage: FC = () => {
           {({ part }) => {
             if (part.type === "text") return <MarkdownText />;
             if (part.type === "reasoning") return <Reasoning {...part} />;
+            if (part.type === "source") return <Sources {...part} />;
             if (part.type === "tool-call")
               return part.toolUI ?? <ToolFallback {...part} />;
+
             return null;
           }}
         </MessagePrimitive.Parts>

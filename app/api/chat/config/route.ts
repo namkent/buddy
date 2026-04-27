@@ -17,18 +17,18 @@ export async function GET() {
     const suggestions = await dbConnection.suggestions.getActiveRandom(4);
 
     // Kiểm tra trạng thái các công cụ (Tools) được bật/tắt trong Setting
-    const summarize = await dbConnection.settings.get("ENABLE_TOOL_SUMMARIZE") !== "false";
     const translate = await dbConnection.settings.get("ENABLE_TOOL_TRANSLATE") !== "false";
     const search = await dbConnection.settings.get("ENABLE_TOOL_RAG_SEARCH") !== "false";
+    const memory = await dbConnection.settings.get("ENABLE_MEM0") !== "false";
 
     return successResponse({
       welcome_title: title,
       welcome_subtitle: subtitle,
       suggestions: suggestions,
       features: {
-        summarize,
         translate,
-        search
+        search,
+        memory
       }
     });
   } catch (error) {

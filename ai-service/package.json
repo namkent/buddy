@@ -1,0 +1,54 @@
+{
+  "name": "mes-ai-service",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "index.ts",
+  "scripts": {
+    "start": "tsx index.ts",
+    "dev": "tsx watch index.ts",
+    "swagger:gen": "tsx swagger/gen.ts",
+    "download-models": "node utils/downloadModels.js",
+    "pnpm:dev": "pnpm dev",
+    "pnpm:start": "pnpm start",
+    "build": "tsc"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "AI Service for text processing, embeddings, reranking, STT, and TTS",
+  "dependencies": {
+    "@lancedb/lancedb": "^0.27.2",
+    "@langchain/textsplitters": "^1.0.1",
+    "@xenova/transformers": "^2.17.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mammoth": "^1.12.0",
+    "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
+    "openai": "^6.34.0",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^4.4.168",
+    "pg": "^8.11.3",
+    "sharp": "^0.34.5",
+    "swagger-ui-express": "^5.0.1",
+    "turndown": "^7.2.4",
+    "uuid": "^14.0.0",
+    "wavefile": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.5.0",
+    "@types/pg": "^8.20.0",
+    "@types/turndown": "^5.0.6",
+    "nodemon": "^3.1.14",
+    "swagger-autogen": "^2.23.7",
+    "tsx": "^4.21.0",
+    "typescript": "5.9.3"
+  }
+}

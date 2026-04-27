@@ -4,6 +4,7 @@ import { useAuiState } from "@assistant-ui/react";
 import type { SyntaxHighlighterProps } from "@assistant-ui/react-markdown";
 import mermaid from "mermaid";
 import { toPng } from "html-to-image";
+import { useTheme } from "next-themes";
 import { FC, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Copy, Download, Maximize2, X, CheckIcon } from "lucide-react";
@@ -12,14 +13,15 @@ export type MermaidDiagramProps = SyntaxHighlighterProps & {
   className?: string;
 };
 
+// Default initialization
 mermaid.initialize({
-  theme: "default",
   startOnLoad: false,
   themeVariables: {
     fontFamily: "'GoogleSans', 'Roboto', sans-serif",
     fontSize: "14px",
   },
 });
+
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
 const ToolButton: FC<{
@@ -138,7 +140,7 @@ const DiagramModal: FC<{ svgHtml: string; onClose: () => void }> = ({ svgHtml, o
               transition: isDragging ? "none" : "transform 0.1s ease-out"
             }}
             dangerouslySetInnerHTML={{
-              __html: `<style>svg { width: auto; height: auto; max-width: 95%; max-height: 95%; outline: none; }</style>` + svgHtml
+              __html: `<style>svg { width: auto !important; height: auto !important; max-width: 95% !important; max-height: 95% !important; outline: none; }</style>` + svgHtml
             }}
           />
         </div>
@@ -170,21 +172,25 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
   components: _components,
   language: _language,
 }) => {
+  const { resolvedTheme } = useTheme();
   const displayRef = useRef<HTMLDivElement>(null);
   const [svgHtml, setSvgHtml] = useState("");
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
+  const isTall = dimensions.height > dimensions.width;
+
   const isComplete = useAuiState((s) => {
     const isRunning = s.part.status?.type === "running";
     if (s.part.type !== "text") return !isRunning;
-    
+
     // Kiểm tra xem Mermaid code block đã kết thúc chưa (có dấu đóng ```)
     const fullText = s.part.text;
     const codeIndex = fullText.indexOf(code);
     if (codeIndex === -1) return !isRunning;
-    
+
     const afterCode = fullText.substring(codeIndex + code.length);
     return afterCode.includes("```") || !isRunning;
   });
@@ -196,18 +202,73 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
     const render = async () => {
       try {
         setError(false);
+
+        // Re-initialize mermaid with the current theme
+        const isDark = resolvedTheme === "dark";
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: isDark ? "dark" : "default",
+          themeVariables: {
+            fontFamily: "'GoogleSans', 'Roboto', sans-serif",
+            fontSize: "14px",
+            textColor: isDark ? "#f8fafc" : "#0f172a",
+          },
+          flowchart: { useMaxWidth: false, htmlLabels: true },
+          sequence: { useMaxWidth: false },
+          state: { useMaxWidth: false },
+          er: { useMaxWidth: false },
+          journey: { useMaxWidth: false },
+          gantt: { useMaxWidth: false },
+        });
+
         const valid = await mermaid.parse(code, { suppressErrors: true });
         if (!valid) return;
         if (cancelled) return;
 
-        // mermaid.render() with a unique id generates SVG without needing a DOM element
         const id = `m-${Math.random().toString(36).slice(2, 9)}`;
         const { svg } = await mermaid.render(id, code);
         if (cancelled) return;
 
-        // Inline Google Sans font into SVG
-        const styled = svg.replace(/<svg /, `<svg style="font-family:'GoogleSans',Roboto,sans-serif;" `);
+        // Use viewBox for accurate aspect ratio detection
+        const viewBoxMatch = svg.match(/viewBox=["'](?:[\d.]+\s+){2}([\d.]+)\s+([\d.]+)["']/);
+        if (viewBoxMatch) {
+          const w = parseFloat(viewBoxMatch[1]);
+          const h = parseFloat(viewBoxMatch[2]);
+          setDimensions({ width: w, height: h });
+        } else {
+          // Fallback to width/height attributes
+          const wMatch = svg.match(/width=["']([\d.]+)(?:px)?["']/);
+          const hMatch = svg.match(/height=["']([\d.]+)(?:px)?["']/);
+          setDimensions({
+            width: wMatch ? parseFloat(wMatch[1]) : 0,
+            height: hMatch ? parseFloat(hMatch[1]) : 0,
+          });
+        }
+
+        // Aggressively clean up SVG for auto-fitting while preserving aspect ratio
+        const styled = svg
+          .replace(/<svg\s+([^>]*)>/i, (match, attributes) => {
+            // Remove existing width, height, and style to let CSS take over
+            const cleanAttributes = attributes
+              .replace(/(?:width|height|style)\s*=\s*["'][^"']*["']/ig, "")
+              .trim();
+
+            // Ensure preserveAspectRatio is present for correct scaling
+            const hasPreserve = /preserveAspectRatio\s*=/i.test(cleanAttributes);
+            const extra = hasPreserve ? "" : ' preserveAspectRatio="xMidYMid meet"';
+
+            // If tall, we want to make sure it doesn't scale up too much
+            const style = isTall
+              ? "font-family:'GoogleSans',Roboto,sans-serif; width: auto; height: auto; max-width: 100%; max-height: 100%; display: block; margin: auto;"
+              : "font-family:'GoogleSans',Roboto,sans-serif; width: 100%; height: auto; max-width: 100%; max-height: 100%; display: block; margin: auto;";
+
+            return `<svg ${cleanAttributes}${extra} style="${style}">`;
+          });
+
+
         setSvgHtml(styled);
+
+
       } catch (e) {
         if (!cancelled) {
           console.warn("Mermaid render failed:", e);
@@ -218,7 +279,7 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
 
     render();
     return () => { cancelled = true; };
-  }, [isComplete, code]);
+  }, [isComplete, code, resolvedTheme]);
 
   const handleCopy = async () => {
     if (!displayRef.current) return;
@@ -249,7 +310,7 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
 
   return (
     <>
-      <div className={cn("aui-mermaid-diagram-wrapper group relative rounded-b-lg bg-muted overflow-hidden", className)}>
+      <div className={cn("aui-mermaid-diagram-wrapper group relative rounded-b-lg bg-muted overflow-hidden [container-type:inline-size]", className)}>
         {/* Hover toolbar */}
         {svgHtml && (
           <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur-sm border border-border rounded-lg p-0.5 shadow-md">
@@ -269,9 +330,14 @@ export const MermaidDiagram: FC<MermaidDiagramProps> = ({
         {svgHtml ? (
           <div
             ref={displayRef}
-            className="p-4 text-center [&_svg]:mx-auto"
+            className={cn(
+              "py-4 px-6 w-full flex items-center justify-center transition-all duration-300 overflow-hidden",
+              isTall ? "aspect-square" : "h-auto min-h-[120px]",
+              "max-h-[80vh]"
+            )}
             dangerouslySetInnerHTML={{ __html: svgHtml }}
           />
+
         ) : (
           <div className="p-4 text-center text-muted-foreground text-sm">
             {error ? "Failed to render diagram" : "Drawing diagram..."}

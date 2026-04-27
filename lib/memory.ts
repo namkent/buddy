@@ -1,16 +1,16 @@
 /**
- * HTTP client gọi Python Mem0 FastAPI service tại localhost:8000.
- * Endpoints: POST /memories (add), POST /search (query context).
+ * HTTP client gọi AI Service tại localhost:3005/v1.
+ * Dịch vụ Memory hỗ trợ lưu trữ và truy xuất bộ nhớ dài hạn (Mem0 style).
  */
 
-const RAG_SERVICE_URL = process.env.RAG_SERVICE_URL || "http://localhost:8000";
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:3005/v1";
 
 export const memory = {
   /**
-   * Lưu tin nhắn mới vào vector memory của user.
+   * Lưu tin nhắn mới vào bộ nhớ dài hạn của user.
    */
   async add(text: string, options: { userId: string }) {
-    const res = await fetch(`${RAG_SERVICE_URL}/memories`, {
+    const res = await fetch(`${AI_SERVICE_URL}/memories`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -20,28 +20,29 @@ export const memory = {
     });
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Mem0 add failed: ${err}`);
+      throw new Error(`Memory add failed: ${err}`);
     }
     return res.json();
   },
 
   /**
-   * Tìm kiếm context liên quan trong vector memory của user.
-   * Trả về chuỗi context đã format, hoặc "" nếu không có gì.
+   * Tìm kiếm context liên quan trong bộ nhớ dài hạn của user.
    */
   async search(query: string, options: { userId: string }): Promise<string> {
-    const res = await fetch(`${RAG_SERVICE_URL}/search`, {
+    const res = await fetch(`${AI_SERVICE_URL}/memories/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, user_id: options.userId, top_k: 5 }),
+      body: JSON.stringify({ query, user_id: options.userId, top_k: 10 }),
     });
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Mem0 search failed: ${err}`);
+      throw new Error(`Memory search failed: ${err}`);
     }
     const data = await res.json();
     const results: any[] = data.results || [];
     if (results.length === 0) return "";
-    return results.map((m: any) => `- ${m.memory || m.text || JSON.stringify(m)}`).join("\n");
+    
+    // Format kết quả thành danh sách các sự kiện đã nhớ kèm category và score
+    return results.map((m: any) => `- [${m.category?.toUpperCase() || 'FACT'}] ${m.memory} (score: ${m.score?.toFixed(2) || 'N/A'})`).join("\n");
   },
 };

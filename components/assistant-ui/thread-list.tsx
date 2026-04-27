@@ -7,9 +7,8 @@ import {
   ThreadListItemMorePrimitive,
   ThreadListItemPrimitive,
   ThreadListPrimitive,
-  useAssistantRuntime,
+  useAui,
   useAuiState,
-  useThreadListItemRuntime,
 } from "@assistant-ui/react";
 import { ArchiveIcon, MoreHorizontalIcon, PlusIcon, TrashIcon, ChevronDownIcon, MessageSquareIcon } from "lucide-react";
 import { type FC, useEffect, useRef, useState } from "react";
@@ -19,7 +18,7 @@ import { cn } from "@/lib/utils";
 // Tự động switch sang thread khi mở URL /app/{threadId} trực tiếp.
 // Phải nằm bên trong ThreadListPrimitive.Root để có context threads.isLoading
 const ThreadInitializer: FC = () => {
-  const runtime = useAssistantRuntime();
+  const aui = useAui();
   const isLoading = useAuiState((s) => s.threads.isLoading);
   const doneRef = useRef(false);
 
@@ -33,11 +32,13 @@ const ThreadInitializer: FC = () => {
     const threadId = match[1];
     doneRef.current = true;
 
-    runtime.threads.switchToThread(threadId).catch((e: unknown) => {
+    try {
+      aui.threads().switchToThread(threadId);
+    } catch (e: unknown) {
       console.error("[MES Assistant] Could not restore thread from URL:", e);
       doneRef.current = false; // allow retry on next render if failed
-    });
-  }, [isLoading, runtime]);
+    }
+  }, [isLoading, aui]);
 
   return null;
 };
@@ -128,7 +129,7 @@ const ThreadListItem: FC<{ mode?: "active" | "archived" }> = () => {
 
 // Tách trigger riêng để dùng useThreadListItemRuntime trong đúng context
 const ThreadListItemTrigger: FC = () => {
-  const itemRuntime = useThreadListItemRuntime();
+  const itemRuntime = useAui().threadListItem();
 
   const handleClick = () => {
     // Lấy externalId/remoteId của thread list item này (chạy trong context của từng item)

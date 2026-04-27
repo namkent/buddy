@@ -153,69 +153,74 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
       signal: abortSignal,
     });
 
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
     const reader = response.body?.getReader();
     if (!reader) throw new Error("No response body");
 
     const decoder = new TextDecoder();
     let fullText = "";
+    
+    // Đọc nguồn RAG từ Header (đã được tối ưu hóa ở Backend)
+    const sourcesHeader = response.headers.get("x-rag-sources");
+    const sourceParts: any[] = [];
+    
+    if (sourcesHeader) {
+      try {
+        const sources = JSON.parse(decodeURIComponent(sourcesHeader));
+        for (const source of sources) {
+
+          sourceParts.push({
+            type: "url",
+            url: source.url,
+            title: source.title,
+            sourceType: "url"
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse sources header", e);
+      }
+    }
 
     const startTime = Date.now();
-    let firstTokenTime: number | undefined;
-    let totalChunks = 0;
+    let firstTokenTime = 0;
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) {
-        if (fullText) {
-          const totalStreamTime = Date.now() - startTime;
-          const tokensPerSecond = (fullText.length / 4) / (totalStreamTime / 1000);
-          yield {
-            content: [{ type: "text", text: fullText }],
-            metadata: {
-              timing: {
-                streamStartTime: startTime,
-                firstTokenTime,
-                totalStreamTime,
-                tokensPerSecond,
-                totalChunks,
-                toolCallCount: 0
-              }
-            }
-          };
-        }
-        break;
-      }
-
-      totalChunks++;
-      if (totalChunks === 1) {
-        firstTokenTime = Date.now() - startTime;
-      }
+      if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
+
+      if (!firstTokenTime && fullText.length > 0) {
+        firstTokenTime = Date.now();
+      }
+
+      // Cập nhật UI với văn bản và nguồn
+      const contentParts: any[] = [];
       
-      const totalStreamTime = Date.now() - startTime;
-      const tokensPerSecond = totalStreamTime > 0 ? (fullText.length / 4) / (totalStreamTime / 1000) : 0;
-      
-      let contentParts: any[] = [];
+      // Xử lý thinking (phòng trường hợp AI vẫn dùng tag này)
       const thinkStart = fullText.indexOf("<think>");
       const thinkEnd = fullText.indexOf("</think>");
 
       if (thinkStart !== -1) {
-        if (thinkStart > 0) {
-           contentParts.push({ type: "text", text: fullText.substring(0, thinkStart) });
-        }
+        if (thinkStart > 0) contentParts.push({ type: "text", text: fullText.substring(0, thinkStart) });
         if (thinkEnd !== -1) {
-           contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7, thinkEnd).trimStart() });
-           const mainText = fullText.substring(thinkEnd + 8);
-           if (mainText.length > 0) {
-              contentParts.push({ type: "text", text: mainText });
-           }
+          contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7, thinkEnd).trim() });
+          const rest = fullText.substring(thinkEnd + 8);
+          if (rest) contentParts.push({ type: "text", text: rest });
         } else {
-           contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7).trimStart() });
+          contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7).trim() });
         }
       } else {
         contentParts.push({ type: "text", text: fullText });
+      }
+
+      // Thêm nguồn vào cuối
+      if (sourceParts.length > 0) {
+        contentParts.push(...sourceParts);
       }
 
       yield { 
@@ -223,10 +228,10 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
         metadata: { 
           timing: { 
             streamStartTime: startTime, 
-            firstTokenTime, 
-            totalStreamTime, 
-            tokensPerSecond, 
-            totalChunks, 
+            firstTokenTime: firstTokenTime || Date.now(), 
+            totalStreamTime: Date.now() - startTime,
+            tokensPerSecond: 0,
+            totalChunks: 0,
             toolCallCount: 0 
           } 
         }
@@ -234,6 +239,8 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
     }
   }
 });
+
+
 
 export const myThreadListAdapter: RemoteThreadListAdapter = {
   async list() {

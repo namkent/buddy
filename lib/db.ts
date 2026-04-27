@@ -19,6 +19,10 @@ export const pool = globalForPg.pool || new Pool({
 
 if (process.env.NODE_ENV !== 'production') globalForPg.pool = pool;
 
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+});
+
 export const dbConnection = {
   async initTables(): Promise<void> {
     await pool.query(`
@@ -104,10 +108,14 @@ export const dbConnection = {
         file_path TEXT NOT NULL,
         active BOOLEAN DEFAULT TRUE,
         status TEXT DEFAULT 'pending',
+        progress INTEGER DEFAULT 0,
         error_message TEXT,
         file_size BIGINT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- Đảm bảo cột progress tồn tại nếu bảng đã có sẵn
+      ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0;
 
       CREATE TABLE IF NOT EXISTS system_logs (
         id SERIAL PRIMARY KEY,
@@ -343,8 +351,13 @@ export const dbConnection = {
       return res.rows;
     },
     async get(key: string) {
-      const res = await pool.query('SELECT value FROM system_settings WHERE key = $1', [key]);
-      return res.rows[0]?.value || null;
+      try {
+        const res = await pool.query('SELECT value FROM system_settings WHERE key = $1', [key]);
+        return res.rows[0]?.value || null;
+      } catch (err) {
+        console.error(`DB Settings Error (${key}):`, err);
+        return null;
+      }
     },
     async set(key: string, value: string, description?: string) {
       if (description !== undefined) {

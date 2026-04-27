@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { dbConnection } from '@/lib/db';
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
@@ -40,21 +40,19 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const { id } = await params;
     const fileId = parseInt(id);
 
-    // Call Python backend to delete vectors
+    // Call AI service backend to delete vectors
     try {
-      const pythonUrl = process.env.RAG_SERVICE_URL || "http://localhost:8000";
-      await fetch(`${pythonUrl}/rag/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_id: fileId })
+      const aiServiceUrl = process.env.AI_SERVICE_URL || "http://127.0.0.1:3005/v1";
+      await fetch(`${aiServiceUrl}/rag/delete-file/${fileId}`, {
+        method: "DELETE"
       });
     } catch (err) {
-      console.warn("Failed to contact python RAG delete. Proceeding anyway.", err);
+      console.warn("Failed to contact AI RAG delete. Proceeding anyway.", err);
     }
 
     // Delete DB record
     await dbConnection.knowledge.deleteFile(fileId);
-    
+
     // Log action
     await dbConnection.logs.create({
       user_id: (session.user as any).userId,
