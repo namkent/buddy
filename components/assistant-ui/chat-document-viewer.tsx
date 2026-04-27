@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { AssistantRuntimeProvider, useLocalRuntime, TextMessagePartProvider, MessageProvider } from "@assistant-ui/react";
 import remarkGfm from "remark-gfm";
+import SecurePdfViewer from "./secure-pdf-viewer";
 
 // Copy y hệt logic từ bản Admin để đảm bảo hoạt động ổn định
 const ChatMarkdownViewer = ({ content, filePath }: { content: string; filePath: string }) => {
@@ -185,13 +186,10 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
               <p className="text-xs text-zinc-400">Đang tải nội dung...</p>
             </div>
           ) : isPdf && !markdownContent ? (
-            <div className="h-full w-full bg-zinc-100 dark:bg-zinc-900">
-              <iframe
-                src={`/api/files${file.file_path.replace(/\.[^/.]+$/, ".pdf")}${file.page ? `#page=${String(file.page).split(',')[0].trim()}` : "#toolbar=0"}`}
-                className="w-full h-full border-none"
-                title={file.file_name}
-              />
-            </div>
+            <SecurePdfViewer 
+              url={`/api/files${file.file_path.replace(/\.[^/.]+$/, ".pdf")}`} 
+              initialPage={file.page ? parseInt(String(file.page).split(',')[0].trim()) : 1}
+            />
           ) : markdownContent ? (
             <div className="max-w-4xl mx-auto p-8 md:p-12">
               <ChatMarkdownViewer content={markdownContent} filePath={file.file_path} />

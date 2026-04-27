@@ -1,0 +1,370 @@
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import * as pdfjs from "pdfjs-dist";
+import { 
+  Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
+  ShieldAlert, LayoutPanelLeft, X 
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+// Thiết lập worker nội bộ (không dùng CDN để hỗ trợ môi trường offline)
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
+
+interface SecurePdfViewerProps {
+  url: string;
+  initialPage?: number;
+  watermarkText?: string;
+}
+
+// Component phụ để render từng Thumbnail
+const Thumbnail = ({ 
+  pdf, 
+  pageNo, 
+  isActive, 
+  onClick 
+}: { 
+  pdf: pdfjs.PDFDocumentProxy; 
+  pageNo: number; 
+  isActive: boolean;
+  onClick: (no: number) => void;
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const renderThumb = async () => {
+      const page = await pdf.getPage(pageNo);
+      const viewport = page.getViewport({ scale: 0.2 });
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      await page.render({ canvasContext: context, viewport }).promise;
+    };
+    renderThumb();
+  }, [pdf, pageNo]);
+
+  return (
+    <div 
+      className={cn(
+        "flex flex-col items-center gap-1 p-2 cursor-pointer transition-all rounded-md group",
+        isActive ? "bg-indigo-50 dark:bg-indigo-500/20 ring-2 ring-indigo-500" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      )}
+      onClick={() => onClick(pageNo)}
+    >
+      <div className="relative shadow-sm border bg-white dark:border-white/5 overflow-hidden">
+        <canvas ref={canvasRef} className="block w-full h-auto grayscale-[0.3] group-hover:grayscale-0 transition-all" />
+      </div>
+      <span className={cn("text-sm font-medium", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500")}>
+        {pageNo}
+      </span>
+    </div>
+  );
+};
+
+// Component phụ để render Mục lục phân cấp
+const OutlineItem = ({ 
+  item, 
+  onClick, 
+  depth = 0 
+}: { 
+  item: any; 
+  onClick: (dest: any) => void;
+  depth?: number;
+}) => {
+  const [isOpen, setIsOpen] = useState(true);
+  const hasItems = item.items && item.items.length > 0;
+
+  return (
+    <div className="flex flex-col">
+      <div 
+        className={cn(
+          "flex items-center gap-1 py-1.5 px-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-white/5 rounded transition-colors group",
+          depth > 0 && "ml-3 border-l dark:border-white/5"
+        )}
+        style={{ paddingLeft: `${depth * 4 + 8}px` }}
+        onClick={() => onClick(item.dest)}
+      >
+        {hasItems && (
+          <button 
+            className="p-0.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+          >
+            <ChevronRight className={cn("size-3 transition-transform", isOpen && "rotate-90")} />
+          </button>
+        )}
+        {!hasItems && <div className="w-4" />}
+        <span className="truncate text-sm text-zinc-600 dark:text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-100 transition-colors">
+          {item.title}
+        </span>
+      </div>
+      {hasItems && isOpen && (
+        <div className="flex flex-col">
+          {item.items.map((subItem: any, idx: number) => (
+            <OutlineItem key={idx} item={subItem} onClick={onClick} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default function SecurePdfViewer({ 
+  url, 
+  initialPage = 1, 
+  watermarkText = "MES ASSISTANT - CONFIDENTIAL" 
+}: SecurePdfViewerProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
+  const [pageNum, setPageNum] = useState(initialPage);
+  const [numPages, setNumPages] = useState(0);
+  const [scale, setScale] = useState(1.5);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<"thumbs" | "outline">("thumbs");
+  const [outline, setOutline] = useState<any[] | null>(null);
+
+  // Load PDF
+  useEffect(() => {
+    let isMounted = true;
+    const loadPdf = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const loadingTask = pdfjs.getDocument(url);
+        const pdfDoc = await loadingTask.promise;
+        if (isMounted) {
+          setPdf(pdfDoc);
+          setNumPages(pdfDoc.numPages);
+          
+          // Trích xuất mục lục
+          const pdfOutline = await pdfDoc.getOutline();
+          setOutline(pdfOutline);
+          if (pdfOutline && pdfOutline.length > 0) setSidebarTab("outline");
+          
+          setLoading(false);
+        }
+      } catch (err: any) {
+        console.error("Error loading PDF via PDF.js:", err);
+        if (isMounted) {
+          setError("Không thể tải tài liệu bảo mật.");
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPdf();
+    return () => { isMounted = false; };
+  }, [url]);
+
+  // Xử lý khi click vào mục lục
+  const handleOutlineClick = async (dest: any) => {
+    if (!pdf || !dest) return;
+    try {
+      let pageRef = dest;
+      if (typeof dest === "string") {
+        pageRef = await pdf.getDestination(dest);
+      }
+      if (Array.isArray(pageRef)) {
+        const pageIndex = await pdf.getPageIndex(pageRef[0]);
+        setPageNum(pageIndex + 1);
+      }
+    } catch (err) {
+      console.warn("Failed to navigate to outline destination", err);
+    }
+  };
+
+  // Render Page
+  const renderPage = useCallback(async (pdfDoc: pdfjs.PDFDocumentProxy, pageNo: number, currentScale: number) => {
+    if (!canvasRef.current) return;
+
+    try {
+      const page = await pdfDoc.getPage(pageNo);
+      const viewport = page.getViewport({ scale: currentScale });
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+
+      if (!context) return;
+
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      await page.render({ canvasContext: context, viewport }).promise;
+      drawWatermark(context, canvas.width, canvas.height);
+
+    } catch (err) {
+      console.error("Error rendering page:", err);
+    }
+  }, [watermarkText]);
+
+  const drawWatermark = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    ctx.save();
+    ctx.font = "bold 20px Arial";
+    ctx.fillStyle = "rgba(150, 150, 150, 0.12)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    
+    // Tăng khoảng cách (step) để chữ không bị lồng lên nhau
+    const stepX = 450;
+    const stepY = 350;
+    for (let x = 0; x < width + stepX; x += stepX) {
+      for (let y = 0; y < height + stepY; y += stepY) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-Math.PI / 6); // Giảm góc xoay một chút cho dễ nhìn
+        ctx.fillText(watermarkText, 0, 0);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  };
+
+  useEffect(() => {
+    if (pdf) renderPage(pdf, pageNum, scale);
+  }, [pdf, pageNum, scale, renderPage]);
+
+  const handleContextMenu = (e: React.MouseEvent) => e.preventDefault();
+
+  if (error) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-zinc-50 dark:bg-zinc-900/50">
+        <ShieldAlert className="size-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 mb-2">Lỗi bảo mật</h3>
+        <p className="text-sm text-zinc-500">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-zinc-50 dark:bg-zinc-950 select-none overflow-hidden" onContextMenu={handleContextMenu}>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-zinc-900 border-b dark:border-white/5 shrink-0 z-20 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setShowSidebar(!showSidebar)}
+            className={cn("size-8 transition-colors", showSidebar && "bg-zinc-100 dark:bg-zinc-800 text-indigo-500")}
+          >
+            <LayoutPanelLeft className="size-4" />
+          </Button>
+          <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800 mx-1" />
+          <div className="flex items-center gap-1">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setPageNum(p => Math.max(1, p - 1))}
+              disabled={pageNum <= 1}
+              className="size-8"
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <span className="text-[12px] font-semibold text-zinc-600 dark:text-zinc-400 min-w-[70px] text-center">
+              {pageNum} / {numPages}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setPageNum(p => Math.min(numPages, p + 1))}
+              disabled={pageNum >= numPages}
+              className="size-8"
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5">
+            <Button variant="ghost" size="icon" onClick={() => setScale(s => Math.max(0.5, s - 0.25))} className="size-7 h-7">
+              <ZoomOut className="size-3.5" />
+            </Button>
+            <span className="text-sm font-mono font-bold text-zinc-500 w-12 text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <Button variant="ghost" size="icon" onClick={() => setScale(s => Math.min(3, s + 0.25))} className="size-7 h-7">
+              <ZoomIn className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar thumbnails & outline */}
+        {showSidebar && pdf && (
+          <div className="w-56 border-r dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/50 overflow-hidden flex flex-col shrink-0 animate-in slide-in-from-left duration-200">
+            {/* Tabs */}
+            <div className="flex border-b dark:border-white/5 p-1 bg-white/50 dark:bg-zinc-900/50">
+              <button 
+                className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all uppercase tracking-tight", sidebarTab === "thumbs" ? "bg-white dark:bg-zinc-800 shadow-sm text-indigo-500" : "text-zinc-400 hover:text-zinc-600")}
+                onClick={() => setSidebarTab("thumbs")}
+              >
+                Trang
+              </button>
+              <button 
+                className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all uppercase tracking-tight", sidebarTab === "outline" ? "bg-white dark:bg-zinc-800 shadow-sm text-indigo-500" : "text-zinc-400 hover:text-zinc-600")}
+                onClick={() => setSidebarTab("outline")}
+                disabled={!outline || outline.length === 0}
+              >
+                Mục lục
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+              {sidebarTab === "thumbs" ? (
+                <div className="flex flex-col gap-1">
+                  {Array.from({ length: numPages }, (_, i) => (
+                    <Thumbnail 
+                      key={i + 1} 
+                      pdf={pdf} 
+                      pageNo={i + 1} 
+                      isActive={pageNum === i + 1}
+                      onClick={setPageNum}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-0.5 text-sm">
+                  {outline?.map((item, idx) => (
+                    <OutlineItem key={idx} item={item} onClick={handleOutlineClick} depth={0} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Main content */}
+        <div className="flex-1 overflow-auto bg-zinc-200/50 dark:bg-zinc-950/50 custom-scrollbar relative p-4 md:p-8 flex justify-center items-start">
+          {loading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-20">
+              <Loader2 className="size-8 animate-spin text-indigo-500" />
+              <p className="text-xs font-medium text-zinc-500 mt-3 italic">Đang mã hóa dữ liệu an toàn...</p>
+            </div>
+          )}
+          
+          <div className="relative shadow-2xl shadow-black/20 border dark:border-white/10 bg-white">
+            <canvas ref={canvasRef} className="max-w-full h-auto block" />
+            <div className="absolute inset-0 z-10 pointer-events-none" />
+          </div>
+        </div>
+      </div>
+
+      <style jsx global>{`
+        @media print {
+          .select-none { display: none !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
