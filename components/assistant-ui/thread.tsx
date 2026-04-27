@@ -46,6 +46,7 @@ import {
   LanguagesIcon,
   Library,
   X,
+  UserRoundIcon,
 } from "lucide-react";
 import DocumentViewer from "@/components/admin/document-viewer";
 import {
@@ -55,6 +56,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { FC } from "react";
+import * as LucideIcons from "lucide-react";
+
+const AgentIcon = ({ icon, className }: { icon: string, className?: string }) => {
+  if (!icon) return <LucideIcons.Bot className={cn("size-4", className)} />;
+  
+  // Kiểm tra nếu là Emoji (thường là các ký tự đặc biệt)
+  const isEmoji = /\p{Emoji}/u.test(icon) && !/^[a-zA-Z0-9]+$/.test(icon);
+  if (isEmoji) return <span className={cn("text-base", className)}>{icon}</span>;
+
+  // Tìm trong bộ Lucide
+  const IconComponent = (LucideIcons as any)[icon];
+  if (IconComponent) return <IconComponent className={cn("size-4", className)} />;
+
+  // Fallback nếu không tìm thấy
+  return <span className={cn("text-xs font-bold", className)}>{icon.substring(0, 2)}</span>;
+};
 
 export const Thread: FC = () => {
   const aui = useAui();
@@ -197,14 +214,17 @@ const ThreadSuggestions: FC<{ suggestions: any[] }> = ({ suggestions }) => {
 const Composer: FC = () => {
   const aui = useAui();
 
-  const [chatMode, setChatMode] = useState<"normal" | "search" | "translate">("normal");
+  const [chatMode, setChatMode] = useState<"normal" | "search" | "translate" | "agent">("normal");
   const [targetLang, setTargetLang] = useState<{ id: string, name: string, emoji: string }>({ id: "vi", name: "Vietnamese", emoji: "🇻🇳" });
   const [knowledgeGroups, setKnowledgeGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
-  const [features, setFeatures] = useState<{ translate: boolean, search: boolean, memory: boolean }>({
+  const [agents, setAgents] = useState<any[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<any>(null);
+  const [features, setFeatures] = useState<{ translate: boolean, search: boolean, memory: boolean, agents: boolean }>({
     translate: true,
     search: true,
-    memory: true
+    memory: true,
+    agents: true
   });
 
   useEffect(() => {
@@ -225,8 +245,20 @@ const Composer: FC = () => {
           if (d.groups) {
             setKnowledgeGroups(d.groups);
             if (d.groups.length > 0 && !selectedGroup) {
-              // Mặc định chọn danh mục đầu tiên
               setSelectedGroup(d.groups[0]);
+            }
+          }
+        })
+        .catch(console.error);
+    }
+    if (chatMode === "agent") {
+      fetch("/api/chat/agents?active=true")
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setAgents(data);
+            if (data.length > 0 && !selectedAgent) {
+              setSelectedAgent(data[0]);
             }
           }
         })
@@ -247,7 +279,8 @@ const Composer: FC = () => {
         custom: {
           chatMode,
           groupId: chatMode === "search" ? selectedGroup?.id : undefined,
-          targetLang: chatMode === "translate" ? targetLang : undefined
+          targetLang: chatMode === "translate" ? targetLang : undefined,
+          agentId: chatMode === "agent" ? selectedAgent?.id : undefined
         }
       } as any
     });
@@ -270,6 +303,7 @@ const Composer: FC = () => {
               <div className="flex items-center gap-1.5 text-[12px] font-bold text-indigo-500 uppercase tracking-widest">
                 {chatMode === "search" && <Library className="size-3" />}
                 {chatMode === "translate" && <LanguagesIcon className="size-3" />}
+                {chatMode === "agent" && <UserRoundIcon className="size-3" />}
                 <span>{chatMode}</span>
                 {chatMode === "search" && knowledgeGroups.length > 0 && (
                   <DropdownMenu>
@@ -323,6 +357,30 @@ const Composer: FC = () => {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
+                {chatMode === "agent" && agents.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="flex items-center gap-1 ml-1 pl-2 border-l border-indigo-500/30 hover:text-indigo-600 transition-colors uppercase cursor-pointer select-none">
+                        {selectedAgent?.name || "Select Agent"}
+                        <ChevronRightIcon className="size-2.5 rotate-90" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="top" sideOffset={12} align="start" className="w-56 max-h-60 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
+                      {agents.map((a) => (
+                        <DropdownMenuItem
+                          key={a.id}
+                          onClick={() => setSelectedAgent(a)}
+                          className="flex items-center gap-2 text-sm cursor-pointer select-none"
+                        >
+                          <div className="w-6 h-6 flex items-center justify-center rounded bg-indigo-100 dark:bg-indigo-900/30">
+                            <AgentIcon icon={a.icon} className="text-indigo-600 dark:text-indigo-400" />
+                          </div>
+                          <span className="truncate">{a.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
               <button onClick={resetMode} className="ml-1 p-0.5 hover:bg-red-500/10 rounded-full transition-colors text-zinc-400 hover:text-red-500 cursor-pointer select-none">
                 <X className="size-3" />
@@ -364,7 +422,7 @@ const ComposerAction: FC<{
   onSend: () => void,
   chatMode: string,
   resetMode: () => void,
-  features: { translate: boolean, search: boolean, memory: boolean }
+  features: { translate: boolean, search: boolean, memory: boolean, agents: boolean }
 }> = ({ onModeSelect, onSend, chatMode, resetMode, features }) => {
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
@@ -390,6 +448,16 @@ const ComposerAction: FC<{
             className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "translate" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
           >
             <LanguagesIcon className="size-4" />
+          </TooltipIconButton>
+        )}
+
+        {features.agents && (
+          <TooltipIconButton
+            tooltip="Specialized Agents"
+            onClick={() => onModeSelect("agent")}
+            className={cn("size-8 rounded-full transition-all cursor-pointer select-none", chatMode === "agent" ? "bg-indigo-500 text-white hover:bg-indigo-600" : "text-muted-foreground hover:bg-muted")}
+          >
+            <UserRoundIcon className="size-4" />
           </TooltipIconButton>
         )}
 

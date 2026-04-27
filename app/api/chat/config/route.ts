@@ -20,6 +20,7 @@ export async function GET() {
     const translate = await dbConnection.settings.get("ENABLE_TOOL_TRANSLATE") !== "false";
     const search = await dbConnection.settings.get("ENABLE_TOOL_RAG_SEARCH") !== "false";
     const memory = await dbConnection.settings.get("ENABLE_MEM0") !== "false";
+    const agents = await dbConnection.settings.get("ENABLE_TOOL_AGENTS") !== "false";
 
     return successResponse({
       welcome_title: title,
@@ -28,7 +29,8 @@ export async function GET() {
       features: {
         translate,
         search,
-        memory
+        memory,
+        agents
       }
     });
   } catch (error) {

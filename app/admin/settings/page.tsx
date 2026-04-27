@@ -7,6 +7,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import * as LucideIcons from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const AgentIcon = ({ icon, className }: { icon: string, className?: string }) => {
+  if (!icon) return <LucideIcons.Bot className={cn("size-4", className)} />;
+  const isEmoji = /\p{Emoji}/u.test(icon) && !/^[a-zA-Z0-9]+$/.test(icon);
+  if (isEmoji) return <span className={cn("text-base", className)}>{icon}</span>;
+  const IconComponent = (LucideIcons as any)[icon];
+  if (IconComponent) return <IconComponent className={cn("size-4", className)} />;
+  return <span className={cn("text-xs font-bold", className)}>{icon.substring(0, 2)}</span>;
+};
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -14,6 +25,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("general");
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [agents, setAgents] = useState<any[]>([]);
 
   useEffect(() => {
     loadSettings();
@@ -21,12 +33,14 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const [setRes, sugRes] = await Promise.all([
+      const [setRes, sugRes, agRes] = await Promise.all([
         fetch("/api/admin/settings"),
-        fetch("/api/admin/suggestions")
+        fetch("/api/admin/suggestions"),
+        fetch("/api/chat/agents")
       ]);
       const setList = await setRes.json();
       const sugList = await sugRes.json();
+      const agList = await agRes.json();
 
       const obj: Record<string, string> = {};
       if (Array.isArray(setList)) {
@@ -34,6 +48,7 @@ export default function SettingsPage() {
       }
       setSettings(obj);
       if (Array.isArray(sugList)) setSuggestions(sugList);
+      if (Array.isArray(agList)) setAgents(agList);
     } catch (error) {
       console.error(error);
     } finally {
@@ -123,6 +138,64 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
+  const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentDesc, setNewAgentDesc] = useState("");
+  const [newAgentPrompt, setNewAgentPrompt] = useState("");
+  const [newAgentIcon, setNewAgentIcon] = useState("Bot");
+
+  const handleCreateAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAgentName.trim() || !newAgentPrompt.trim()) return;
+    setCreating(true);
+    try {
+      const r = await fetch("/api/chat/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          name: newAgentName.trim(), 
+          description: newAgentDesc.trim(),
+          system_prompt: newAgentPrompt.trim(),
+          icon: newAgentIcon
+        })
+      });
+      const agent = await r.json();
+      if (agent.id) {
+        setAgents(prev => [agent, ...prev]);
+        setNewAgentName("");
+        setNewAgentDesc("");
+        setNewAgentPrompt("");
+        toast.success("Agent created!");
+      }
+    } catch {
+      toast.error("Error creating agent");
+    }
+    setCreating(false);
+  };
+
+  const handleDeleteAgent = async (id: string) => {
+    if (!confirm("Are you sure?")) return;
+    try {
+      await fetch(`/api/chat/agents?id=${id}`, { method: "DELETE" });
+      setAgents(prev => prev.filter(a => a.id !== id));
+      toast.success("Agent deleted");
+    } catch {
+      toast.error("Error deleting agent");
+    }
+  };
+
+  const handleToggleAgentActive = async (id: string, current: boolean) => {
+    try {
+      await fetch("/api/chat/agents", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, is_active: !current })
+      });
+      setAgents(prev => prev.map(a => a.id === id ? { ...a, is_active: !current } : a));
+    } catch {
+      toast.error("Error updating agent");
+    }
+  };
+
   if (loading) return <div className="p-8 animate-pulse text-center">Loading settings...</div>;
 
   return (
@@ -135,6 +208,7 @@ export default function SettingsPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-2 bg-zinc-100/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 p-1">
           <TabsTrigger value="general" className="data-[state=active]:text-indigo-600 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 shadow-none">General Config</TabsTrigger>
+          <TabsTrigger value="agents" className="data-[state=active]:text-indigo-600 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 shadow-none">AI Agents</TabsTrigger>
           <TabsTrigger value="suggestions" className="data-[state=active]:text-indigo-600 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-800 shadow-none">Thread Suggestions</TabsTrigger>
         </TabsList>
 
@@ -243,6 +317,20 @@ export default function SettingsPage() {
                       />
                     </div>
                   </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Enable Dynamic Agents</p>
+                      <p className="text-xs text-muted-foreground">Cho phép sử dụng các tác nhân AI chuyên biệt trong chat.</p>
+                    </div>
+                    <div>
+                      <Switch
+                        checked={settings.ENABLE_TOOL_AGENTS !== "false"}
+                        onCheckedChange={checked => setSettings({ ...settings, ENABLE_TOOL_AGENTS: checked ? "true" : "false" })}
+                        className="data-[state=checked]:bg-indigo-600"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -254,6 +342,68 @@ export default function SettingsPage() {
               </Button>
             </div>
           </form>
+        </TabsContent>
+
+        <TabsContent value="agents">
+          <div className="flex flex-col md:flex-row items-start gap-6">
+            <div className="w-full md:w-1/3 space-y-4 shrink-0">
+              <form onSubmit={handleCreateAgent} className="bg-white dark:bg-white/5 p-6 rounded-xl border border-zinc-200 dark:border-white/10 space-y-4">
+                <h3 className="font-semibold text-lg">Create New AI Agent</h3>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Agent Name</label>
+                  <Input value={newAgentName} onChange={e => setNewAgentName(e.target.value)} placeholder="e.g. Chuyên gia SOP" required />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Icon (Emoji/Lucide name)</label>
+                  <Input value={newAgentIcon} onChange={e => setNewAgentIcon(e.target.value)} placeholder="e.g. 🤖, Bot, Chef" />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Description</label>
+                  <Input value={newAgentDesc} onChange={e => setNewAgentDesc(e.target.value)} placeholder="Vai trò của agent này..." />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">System Prompt</label>
+                  <Textarea rows={6} value={newAgentPrompt} onChange={e => setNewAgentPrompt(e.target.value)} placeholder="Cấu hình hành vi cho agent này..." required />
+                </div>
+                <Button type="submit" disabled={creating} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                  {creating ? "Creating..." : "Create Agent"}
+                </Button>
+              </form>
+            </div>
+
+            <div className="w-full md:w-2/3 space-y-4">
+              {agents.length === 0 ? (
+                <div className="p-12 text-center border-2 border-dashed rounded-xl text-muted-foreground">
+                  No agents created yet. Start by creating one on the left.
+                </div>
+              ) : (
+                agents.map(agent => (
+                  <div key={agent.id} className="bg-white dark:bg-white/5 p-4 rounded-xl border border-zinc-200 dark:border-white/10 flex justify-between items-center group">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                        <AgentIcon icon={agent.icon} className="text-indigo-600 dark:text-indigo-400" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold flex items-center gap-2">
+                          {agent.name}
+                          {!agent.is_active && <span className="text-[10px] bg-zinc-200 dark:bg-zinc-800 px-2 py-0.5 rounded uppercase">Disabled</span>}
+                        </h4>
+                        <p className="text-sm text-muted-foreground line-clamp-1">{agent.description}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="outline" size="sm" onClick={() => handleToggleAgentActive(agent.id, agent.is_active)}>
+                        {agent.is_active ? "Deactivate" : "Activate"}
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteAgent(agent.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="suggestions">

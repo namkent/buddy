@@ -127,6 +127,16 @@ export const dbConnection = {
         content TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        system_prompt TEXT NOT NULL,
+        icon TEXT,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `);
     
     // Seed default settings if they don't exist
@@ -138,6 +148,7 @@ export const dbConnection = {
       ('ENABLE_TOOL_TRANSLATE', 'true', 'Bật tính năng dịch thuật'),
       ('ENABLE_TOOL_RAG_SEARCH', 'true', 'Bật tính năng RAG Search'),
       ('ENABLE_TOOL_SUMMARIZE', 'true', 'Bật tính năng Tóm tắt Chat'),
+      ('ENABLE_TOOL_AGENTS', 'true', 'Bật tính năng Tác nhân AI (Agents)'),
       ('ENABLE_GUEST_ACCESS', 'false', 'Cho phép người dùng chưa phân quyền (Guest) được nhắn tin')
       ON CONFLICT (key) DO NOTHING;
     `);
@@ -399,6 +410,35 @@ export const dbConnection = {
     },
     async delete(id: number) {
       await pool.query('DELETE FROM thread_suggestions WHERE id = $1', [id]);
+    }
+  },
+
+  agents: {
+    async findAll(onlyActive: boolean = false) {
+      const where = onlyActive ? 'WHERE is_active = TRUE' : '';
+      const res = await pool.query(`SELECT * FROM agents ${where} ORDER BY created_at DESC`);
+      return res.rows;
+    },
+    async findById(id: string) {
+      const res = await pool.query('SELECT * FROM agents WHERE id = $1', [id]);
+      return res.rows[0] || null;
+    },
+    async create(agent: { id: string, name: string, description?: string, system_prompt: string, icon?: string, is_active?: boolean }) {
+      const res = await pool.query(
+        'INSERT INTO agents (id, name, description, system_prompt, icon, is_active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [agent.id, agent.name, agent.description || '', agent.system_prompt, agent.icon || 'Bot', agent.is_active ?? true]
+      );
+      return res.rows[0];
+    },
+    async update(id: string, data: any) {
+      const fields = Object.keys(data);
+      if (fields.length === 0) return;
+      const values = Object.values(data);
+      const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
+      await pool.query(`UPDATE agents SET ${setClause} WHERE id = $1`, [id, ...values]);
+    },
+    async delete(id: string) {
+      await pool.query('DELETE FROM agents WHERE id = $1', [id]);
     }
   },
 

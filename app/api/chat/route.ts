@@ -97,6 +97,7 @@ export async function POST(req: Request) {
     const metaMode = meta.chatMode;
     const metaGroupId = meta.groupId;
     const metaTargetLang = meta.targetLang;
+    const metaAgentId = meta.agentId;
 
     // --- 1. Xử lý Dịch thuật (Chỉ chạy nếu Admin Bật) ---
     if (enableTranslate === "true" && (metaMode === "translate" || currentTextContent.startsWith("/translate "))) {
@@ -111,6 +112,19 @@ export async function POST(req: Request) {
           resolvedSystemPrompt = `Bạn là biên dịch viên chuyên nghiệp. Dịch sang ${lang}. CHỈ trả về bản dịch.`;
           updateLastMessageContent(apiMessages, `Dịch sang ${lang}:\n\n${body}`);
         }
+      }
+    }
+
+    // --- 1.1 Xử lý Agent (Nếu không phải dịch thuật và có chọn tác nhân) ---
+    if (!isTranslate && metaAgentId) {
+      try {
+        const agent = await dbConnection.agents.findById(metaAgentId);
+        if (agent && agent.is_active) {
+          // Agent prompt ghi đè prompt mặc định nhưng vẫn giữ thông tin User Session
+          resolvedSystemPrompt = `${userSessionInfo}\n\n${agent.system_prompt}`;
+        }
+      } catch (e) {
+        console.error("Agent fetch error:", e);
       }
     }
 
@@ -334,11 +348,8 @@ async function performRAGSearch(query: string, req: Request, groupId?: number) {
       const absolutePrefix = `${origin}${fileServerUrl}/group_`;
       text = text.replace(new RegExp(`\\!\\[(.*?)\\]\\(${imgPathPrefix}`, 'g'), `![$1](${absolutePrefix}`);
 
-      const pageStr = pageNum !== null ? `, TRANG: ${pageNum}` : "";
+      const pageStr = pageNum !== null ? ` | TRANG: ${pageNum}` : " | KHÔNG CÓ THÔNG TIN TRANG";
       let chunk = `[DỮ LIỆU TRÍCH XUẤT TỪ - TÀI LIỆU: ${cleanSource}${pageStr}]\n${text}\n[KẾT THÚC ĐOẠN TRÍCH]`;
-
-
-
 
       if (images && Array.isArray(images)) {
         images.forEach((imgUrl: string) => {
@@ -356,8 +367,8 @@ async function performRAGSearch(query: string, req: Request, groupId?: number) {
 
     const sources = Array.from(sourceGroups.values()).map(g => {
       const sortedPages = Array.from(g.pages).sort((a: any, b: any) => a - b);
-      // Chỉ hiển thị số trang nếu có nhiều hơn 1 trang khác nhau được trích dẫn
-      const showPages = sortedPages.length > 1;
+      // Chỉ hiển thị số trang nếu có từ 2 trang khác nhau trở lên được trích dẫn
+      const showPages = sortedPages.length >= 2;
       return {
         url: `cite:id=${g.file_id}&path=${encodeURIComponent(g.path)}&name=${encodeURIComponent(g.title)}${sortedPages.length > 0 ? `&page=${sortedPages.join(",")}` : ""}`,
         title: `${g.title}${showPages ? ` (Trang ${sortedPages.join(", ")})` : ""}`
@@ -372,15 +383,14 @@ function createRAGSystemPrompt(query: string, context: string) {
 ${context}
 
 QUY TẮC BẮT BUỘC KHI TRÍCH DẪN NGUỒN:
-1. Trả lời câu hỏi chi tiết dựa trên dữ liệu.
-2. CUỐI CÂU TRẢ LỜI, THÊM MỘT MỤC DUY NHẤT LÀ "Nguồn:". SAU ĐÓ XUỐNG DÒNG VÀ LIỆT KÊ TẤT CẢ CÁC TÀI LIỆU ĐÃ TRÍCH DẪN.
-   - TẤT CẢ CÁC TRANG CỦA CÙNG MỘT TÀI LIỆU PHẢI ĐƯỢC GỘP LẠI TRÊN MỘT DÒNG DUY NHẤT.
-   - CẤM VIẾT LẶP LẠI TÊN TÀI LIỆU.
-   - CHỈ HIỂN THỊ SỐ TRANG NẾU TÀI LIỆU CÓ TỪ 2 TRANG TRỞ LÊN ĐƯỢC TRÍCH DẪN.
-   - TUYỆT ĐỐI KHÔNG TỰ BỊA RA SỐ TRANG NẾU TRONG DỮ LIỆU KHÔNG CÓ THÔNG TIN "TRANG: ...".
-   - Ví dụ trích dẫn nhiều trang: "* Tên tài liệu (trang 1, 3, 5)"
-   - Ví dụ trích dẫn 1 trang hoặc không rõ trang: "* Tên tài liệu"
-3. Chỉ trả lời dựa trên dữ liệu cung cấp. 
+1. Trả lời chi tiết và chính xác.
+2. CUỐI CÂU TRẢ LỜI, thêm mục "Nguồn:" và liệt kê các tài liệu theo quy tắc sau:
+   - Gộp tất cả các trang của cùng một tài liệu trên 1 dòng duy nhất.
+   - CHỈ liệt kê số trang nếu tài liệu đó có ÍT NHẤT 2 TRANG KHÁC NHAU được nhắc đến trong dữ liệu cung cấp (Ví dụ: Trang 1, 2).
+   - NẾU tài liệu chỉ có 1 trang hoặc dữ liệu ghi "KHÔNG CÓ THÔNG TIN TRANG", TUYỆT ĐỐI KHÔNG được bịa ra số trang. Chỉ viết tên tài liệu.
+   - Cấm viết lặp lại tên tài liệu.
+   - Định dạng: "* Tên tài liệu (trang X, Y)" hoặc "* Tên tài liệu" (nếu không có số trang hợp lệ).
+3. Chỉ trả lời dựa trên dữ liệu. Nếu không có thông tin, hãy nói "Tôi không tìm thấy thông tin này trong tài liệu".
 4. Giữ nguyên hình ảnh ![image](url) nếu có.`;
 }
 
