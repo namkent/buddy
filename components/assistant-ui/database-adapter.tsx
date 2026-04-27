@@ -173,7 +173,7 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
         for (const source of sources) {
 
           sourceParts.push({
-            type: "url",
+            type: "source",
             url: source.url,
             title: source.title,
             sourceType: "url"

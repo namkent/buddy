@@ -369,8 +369,11 @@ async function performRAGSearch(query: string, req: Request, groupId?: number) {
       const sortedPages = Array.from(g.pages).sort((a: any, b: any) => a - b);
       // Chỉ hiển thị số trang nếu có từ 2 trang khác nhau trở lên được trích dẫn
       const showPages = sortedPages.length >= 2;
+      
+      const citationUrl = `cite:id=${g.file_id}&path=${encodeURIComponent(g.path)}&name=${encodeURIComponent(g.title)}${sortedPages.length > 0 ? `&page=${sortedPages.join(",")}` : ""}`;
+
       return {
-        url: `cite:id=${g.file_id}&path=${encodeURIComponent(g.path)}&name=${encodeURIComponent(g.title)}${sortedPages.length > 0 ? `&page=${sortedPages.join(",")}` : ""}`,
+        url: citationUrl,
         title: `${g.title}${showPages ? ` (Trang ${sortedPages.join(", ")})` : ""}`
       };
     });
@@ -382,16 +385,12 @@ function createRAGSystemPrompt(query: string, context: string) {
   return `Bạn là chuyên gia về MES. Câu hỏi: "${query}". DỰA VÀO DỮ LIỆU SAU ĐỂ TRẢ LỜI:
 ${context}
 
-QUY TẮC BẮT BUỘC KHI TRÍCH DẪN NGUỒN:
-1. Trả lời chi tiết và chính xác.
-2. CUỐI CÂU TRẢ LỜI, thêm mục "Nguồn:" và liệt kê các tài liệu theo quy tắc sau:
-   - Gộp tất cả các trang của cùng một tài liệu trên 1 dòng duy nhất.
-   - CHỈ liệt kê số trang nếu tài liệu đó có ÍT NHẤT 2 TRANG KHÁC NHAU được nhắc đến trong dữ liệu cung cấp (Ví dụ: Trang 1, 2).
-   - NẾU tài liệu chỉ có 1 trang hoặc dữ liệu ghi "KHÔNG CÓ THÔNG TIN TRANG", TUYỆT ĐỐI KHÔNG được bịa ra số trang. Chỉ viết tên tài liệu.
-   - Cấm viết lặp lại tên tài liệu.
-   - Định dạng: "* Tên tài liệu (trang X, Y)" hoặc "* Tên tài liệu" (nếu không có số trang hợp lệ).
-3. Chỉ trả lời dựa trên dữ liệu. Nếu không có thông tin, hãy nói "Tôi không tìm thấy thông tin này trong tài liệu".
-4. Giữ nguyên hình ảnh ![image](url) nếu có.`;
+QUY TẮC TRẢ LỜI:
+1. Trả lời chi tiết, chính xác và chuyên nghiệp.
+2. KHÔNG cần tự viết mục "Nguồn:" ở cuối bài, hệ thống sẽ tự động hiển thị các thẻ nguồn tương ứng.
+3. Bạn có thể trích dẫn nguồn ngay trong nội dung (ví dụ: "Theo tài liệu X, trang Y...") để tăng độ tin cậy.
+4. Chỉ trả lời dựa trên dữ liệu được cung cấp. Nếu không có thông tin, hãy nói "Tôi không tìm thấy thông tin này trong tài liệu".
+5. Giữ nguyên hình ảnh ![image](url) nếu có.`;
 }
 
 

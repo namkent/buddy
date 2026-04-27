@@ -48,7 +48,7 @@ import {
   X,
   UserRoundIcon,
 } from "lucide-react";
-import DocumentViewer from "@/components/admin/document-viewer";
+import ChatDocumentViewer from "@/components/assistant-ui/chat-document-viewer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -113,7 +113,7 @@ export const Thread: FC = () => {
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
-      <DocumentViewer
+      <ChatDocumentViewer
         isOpen={!!viewerFile}
         onClose={() => setViewerFile(null)}
         file={viewerFile}
@@ -524,7 +524,11 @@ const AssistantMessage: FC = () => {
           {({ part }) => {
             if (part.type === "text") return <MarkdownText />;
             if (part.type === "reasoning") return <Reasoning {...part} />;
-            if (part.type === "source") return <Sources {...part} />;
+            if (part.type === "source") return (
+              <div className="inline-flex gap-2 mr-2 mb-2 mt-1">
+                <Sources {...part} />
+              </div>
+            );
             if (part.type === "tool-call")
               return part.toolUI ?? <ToolFallback {...part} />;
 

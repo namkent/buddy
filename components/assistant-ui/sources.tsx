@@ -107,8 +107,6 @@ function SourceIcon({
   className,
   ...props
 }: ComponentProps<"span"> & { url: string }) {
-  const isInternal = url?.startsWith("cite:");
-
   return (
     <span
       data-slot="source-icon"
@@ -118,11 +116,7 @@ function SourceIcon({
       )}
       {...props}
     >
-      {isInternal ? (
-        <FileText className="size-2.5" />
-      ) : (
-        <Globe className="size-2.5" />
-      )}
+      <FileText className="size-2.5" />
     </span>
   );
 }

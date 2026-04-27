@@ -66,6 +66,35 @@ const MarkdownTextInternal = ({ content, filePath }: { content: string; filePath
                       {...props}
                     />
                   );
+                },
+                a: ({ href, children, ...props }) => {
+                  if (href?.startsWith("cite:")) {
+                    return (
+                      <a 
+                        href={href} 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          try {
+                            const params = new URLSearchParams(href.substring(5));
+                            const fileData = {
+                              id: parseInt(params.get("id") || "0"),
+                              file_path: params.get("path"),
+                              file_name: params.get("name"),
+                              page: params.get("page")
+                            };
+                            window.dispatchEvent(new CustomEvent("open-document", { detail: fileData }));
+                          } catch (err) {
+                            console.error("Failed to navigate citation in viewer:", err);
+                          }
+                        }}
+                        className="text-indigo-600 hover:underline cursor-pointer font-medium"
+                        {...props}
+                      >
+                        {children}
+                      </a>
+                    );
+                  }
+                  return <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline" {...props}>{children}</a>;
                 }
               }}
             />
@@ -97,6 +126,15 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
 
   useEffect(() => {
     if (isOpen && file) {
+      const ext = file.file_name.split('.').pop()?.toLowerCase();
+      // Nếu là PDF thì ưu tiên xem bản gốc (nhúng PDF)
+      if (ext === "pdf") {
+        setActiveTab("original");
+      } else {
+        // Các loại khác thì chờ load Markdown xem có không, mặc định tạm thời là original
+        setActiveTab("original");
+      }
+      
       loadDocument();
       loadMarkdown();
     } else {
@@ -104,7 +142,6 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
       setMarkdownContent(null);
       setError(null);
       setLoading(true);
-      setActiveTab("original");
     }
   }, [isOpen, file]);
 
@@ -147,11 +184,17 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
   const loadMarkdown = async () => {
     if (!file) return;
     try {
+      const ext = file.file_name.split('.').pop()?.toLowerCase();
       const mdUrl = `/api/files${file.file_path.replace(/\.[^/.]+$/, ".md")}`;
       const response = await fetch(mdUrl);
       if (response.ok) {
         const text = await response.text();
         setMarkdownContent(text);
+        
+        // Nếu không phải PDF và có Markdown, tự động chuyển sang tab Markdown
+        if (ext !== "pdf") {
+          setActiveTab("markdown");
+        }
       }
     } catch (err) {
       console.warn("Markdown debug file not found or load fail");
@@ -296,7 +339,7 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
                         type === "html" && "max-w-4xl bg-white dark:bg-zinc-950 shadow-lg border-x min-h-full"
                       )}>
                         <iframe
-                          src={`/api/files${file.file_path}${file.page ? `#page=${file.page}` : "#toolbar=0"}`}
+                          src={`/api/files${file.file_path}${file.page ? `#page=${String(file.page).split(',')[0].trim()}` : "#toolbar=0"}`}
                           className="w-full h-full border-none"
                           title={file.file_name}
                           onLoad={handleIframeLoad}
