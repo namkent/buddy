@@ -112,16 +112,32 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
     if (!file) return;
     setLoading(true);
     try {
-      // Luôn ưu tiên tìm file .md được convert sẵn cho Chat
-      const mdUrl = `/api/files${file.file_path.replace(/\.[^/.]+$/, ".md")}`;
-      const response = await fetch(mdUrl);
-      if (response.ok) {
-        const text = await response.text();
+      const basePath = file.file_path.replace(/\.[^/.]+$/, "");
+      const pdfUrl = `/api/files${basePath}.pdf`;
+      
+      // 1. Kiểm tra xem có file PDF gốc không
+      const pdfCheck = await fetch(pdfUrl, { method: 'HEAD' });
+      if (pdfCheck.ok) {
+        setIsPdf(true);
+        setMarkdownContent(null);
+        setLoading(false);
+        return; // Đã tìm thấy PDF, thoát luôn để ưu tiên hiển thị PDF
+      }
+
+      // 2. Nếu không có PDF, mới tìm file .md
+      const mdUrl = `/api/files${basePath}.md`;
+      const mdResponse = await fetch(mdUrl);
+      if (mdResponse.ok) {
+        const text = await mdResponse.text();
         setMarkdownContent(text);
+        setIsPdf(false);
       } else if (!isPdf) {
-        // Nếu không có .md và không phải PDF, thử đọc file gốc nếu là text/html
+        // 3. Cuối cùng mới thử đọc file gốc nếu là text/html
         const res = await fetch(`/api/files${file.file_path}`);
-        if (res.ok) setMarkdownContent(await res.text());
+        if (res.ok) {
+          const text = await res.text();
+          setMarkdownContent(text);
+        }
       }
     } catch (err) {
       console.warn("Failed to load content for chat viewer", err);
@@ -171,7 +187,7 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
           ) : isPdf && !markdownContent ? (
             <div className="h-full w-full bg-zinc-100 dark:bg-zinc-900">
               <iframe
-                src={`/api/files${file.file_path}${file.page ? `#page=${String(file.page).split(',')[0].trim()}` : "#toolbar=0"}`}
+                src={`/api/files${file.file_path.replace(/\.[^/.]+$/, ".pdf")}${file.page ? `#page=${String(file.page).split(',')[0].trim()}` : "#toolbar=0"}`}
                 className="w-full h-full border-none"
                 title={file.file_name}
               />
