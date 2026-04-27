@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as pdfjs from "pdfjs-dist";
-import { 
-  Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, 
-  ShieldAlert, LayoutPanelLeft, X 
+import {
+  Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
+  ShieldAlert, LayoutPanelLeft, X, Search, ChevronUp, ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,14 +20,14 @@ interface SecurePdfViewerProps {
 }
 
 // Component phụ để render từng Thumbnail
-const Thumbnail = ({ 
-  pdf, 
-  pageNo, 
-  isActive, 
-  onClick 
-}: { 
-  pdf: pdfjs.PDFDocumentProxy; 
-  pageNo: number; 
+const Thumbnail = ({
+  pdf,
+  pageNo,
+  isActive,
+  onClick
+}: {
+  pdf: pdfjs.PDFDocumentProxy;
+  pageNo: number;
   isActive: boolean;
   onClick: (no: number) => void;
 }) => {
@@ -51,7 +51,7 @@ const Thumbnail = ({
   }, [pdf, pageNo]);
 
   return (
-    <div 
+    <div
       className={cn(
         "flex flex-col items-center gap-1 p-2 cursor-pointer transition-all rounded-md group",
         isActive ? "bg-indigo-50 dark:bg-indigo-500/20 ring-2 ring-indigo-500" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -69,12 +69,12 @@ const Thumbnail = ({
 };
 
 // Component phụ để render Mục lục phân cấp
-const OutlineItem = ({ 
-  item, 
-  onClick, 
-  depth = 0 
-}: { 
-  item: any; 
+const OutlineItem = ({
+  item,
+  onClick,
+  depth = 0
+}: {
+  item: any;
   onClick: (dest: any) => void;
   depth?: number;
 }) => {
@@ -83,7 +83,7 @@ const OutlineItem = ({
 
   return (
     <div className="flex flex-col">
-      <div 
+      <div
         className={cn(
           "flex items-center gap-1 py-1.5 px-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-white/5 rounded transition-colors group",
           depth > 0 && "ml-3 border-l dark:border-white/5"
@@ -92,7 +92,7 @@ const OutlineItem = ({
         onClick={() => onClick(item.dest)}
       >
         {hasItems && (
-          <button 
+          <button
             className="p-0.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded"
             onClick={(e) => {
               e.stopPropagation();
@@ -118,10 +118,10 @@ const OutlineItem = ({
   );
 };
 
-export default function SecurePdfViewer({ 
-  url, 
-  initialPage = 1, 
-  watermarkText = "MES ASSISTANT - CONFIDENTIAL" 
+export default function SecurePdfViewer({
+  url,
+  initialPage = 1,
+  watermarkText = "MES ASSISTANT - CONFIDENTIAL"
 }: SecurePdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
@@ -133,6 +133,12 @@ export default function SecurePdfViewer({
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<"thumbs" | "outline">("thumbs");
   const [outline, setOutline] = useState<any[] | null>(null);
+
+  // Search States
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<{ pageNo: number; item: any }[]>([]);
+  const [currentResultIndex, setCurrentResultIndex] = useState(-1);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Load PDF
   useEffect(() => {
@@ -146,12 +152,11 @@ export default function SecurePdfViewer({
         if (isMounted) {
           setPdf(pdfDoc);
           setNumPages(pdfDoc.numPages);
-          
-          // Trích xuất mục lục
+
           const pdfOutline = await pdfDoc.getOutline();
           setOutline(pdfOutline);
           if (pdfOutline && pdfOutline.length > 0) setSidebarTab("outline");
-          
+
           setLoading(false);
         }
       } catch (err: any) {
@@ -166,6 +171,42 @@ export default function SecurePdfViewer({
     loadPdf();
     return () => { isMounted = false; };
   }, [url]);
+
+  // Hàm thực hiện tìm kiếm
+  const handleSearch = async (term: string) => {
+    if (!pdf || !term || term.length < 2) {
+      setSearchResults([]);
+      setCurrentResultIndex(-1);
+      return;
+    }
+
+    setIsSearching(true);
+    const results: { pageNo: number; item: any }[] = [];
+
+    try {
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+
+        textContent.items.forEach((item: any) => {
+          if (item.str && item.str.toLowerCase().includes(term.toLowerCase())) {
+            results.push({ pageNo: i, item });
+          }
+        });
+      }
+      setSearchResults(results);
+      if (results.length > 0) {
+        setCurrentResultIndex(0);
+        setPageNum(results[0].pageNo);
+      } else {
+        setCurrentResultIndex(-1);
+      }
+    } catch (err) {
+      console.error("Search failed:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   // Xử lý khi click vào mục lục
   const handleOutlineClick = async (dest: any) => {
@@ -184,6 +225,20 @@ export default function SecurePdfViewer({
     }
   };
 
+  const nextSearchResult = () => {
+    if (searchResults.length === 0) return;
+    const nextIndex = (currentResultIndex + 1) % searchResults.length;
+    setCurrentResultIndex(nextIndex);
+    setPageNum(searchResults[nextIndex].pageNo);
+  };
+
+  const prevSearchResult = () => {
+    if (searchResults.length === 0) return;
+    const prevIndex = (currentResultIndex - 1 + searchResults.length) % searchResults.length;
+    setCurrentResultIndex(prevIndex);
+    setPageNum(searchResults[prevIndex].pageNo);
+  };
+
   // Render Page
   const renderPage = useCallback(async (pdfDoc: pdfjs.PDFDocumentProxy, pageNo: number, currentScale: number) => {
     if (!canvasRef.current) return;
@@ -200,12 +255,41 @@ export default function SecurePdfViewer({
       canvas.width = viewport.width;
 
       await page.render({ canvasContext: context, viewport }).promise;
+
+      // 1. Vẽ Highlight tìm kiếm (nếu có)
+      if (searchTerm && searchTerm.length >= 2) {
+        const textContent = await page.getTextContent();
+        context.save();
+        context.fillStyle = "rgba(255, 255, 0, 0.4)"; // Màu vàng highlight
+
+        textContent.items.forEach((item: any) => {
+          if (item.str && item.str.toLowerCase().includes(searchTerm.toLowerCase())) {
+            const [fontHeight, xRotation, yRotation, fontWidth, x, y] = item.transform;
+
+            // Chuyển đổi tọa độ từ PDF sang Canvas
+            const [canvasX, canvasY] = viewport.convertToViewportPoint(x, y);
+            const [width, height] = viewport.convertToViewportPoint(x + item.width, y + item.height);
+
+            // Vẽ hình chữ nhật highlight
+            // Lưu ý: PDF dùng hệ tọa độ gốc ở dưới, Canvas dùng ở trên
+            context.fillRect(
+              canvasX,
+              canvasY - (item.height * currentScale),
+              item.width * currentScale,
+              item.height * currentScale
+            );
+          }
+        });
+        context.restore();
+      }
+
+      // 2. Vẽ Watermark
       drawWatermark(context, canvas.width, canvas.height);
 
     } catch (err) {
       console.error("Error rendering page:", err);
     }
-  }, [watermarkText]);
+  }, [watermarkText, searchTerm]);
 
   const drawWatermark = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     ctx.save();
@@ -213,10 +297,10 @@ export default function SecurePdfViewer({
     ctx.fillStyle = "rgba(150, 150, 150, 0.12)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    
+
     // Tăng khoảng cách (step) để chữ không bị lồng lên nhau
-    const stepX = 450;
-    const stepY = 350;
+    const stepX = 350;
+    const stepY = 100;
     for (let x = 0; x < width + stepX; x += stepX) {
       for (let y = 0; y < height + stepY; y += stepY) {
         ctx.save();
@@ -250,19 +334,52 @@ export default function SecurePdfViewer({
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-zinc-900 border-b dark:border-white/5 shrink-0 z-20 shadow-sm">
         <div className="flex items-center gap-3">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setShowSidebar(!showSidebar)}
             className={cn("size-8 transition-colors", showSidebar && "bg-zinc-100 dark:bg-zinc-800 text-indigo-500")}
           >
             <LayoutPanelLeft className="size-4" />
           </Button>
           <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800 mx-1" />
+
+          {/* Search Bar */}
+          <div className="relative flex items-center group">
+            <div className="absolute left-2.5 text-zinc-400 group-focus-within:text-indigo-500 transition-colors">
+              {isSearching ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+            </div>
+            <input
+              type="text"
+              placeholder="Tìm trong tài liệu..."
+              className="h-8 w-40 md:w-56 pl-8 pr-16 bg-zinc-100 dark:bg-zinc-800 border-none rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch(searchTerm)}
+            />
+            {searchResults.length > 0 && (
+              <div className="absolute right-1 flex items-center gap-0.5 bg-white dark:bg-zinc-950 rounded-md shadow-sm border dark:border-white/5 p-0.5 animate-in fade-in zoom-in duration-200">
+                <span className="text-[10px] font-bold text-zinc-500 px-1 border-r dark:border-white/5">
+                  {currentResultIndex + 1}/{searchResults.length}
+                </span>
+                <Button variant="ghost" size="icon" onClick={prevSearchResult} className="size-5 h-5">
+                  <ChevronUp className="size-3" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={nextSearchResult} className="size-5 h-5">
+                  <ChevronDown className="size-3" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => { setSearchTerm(""); setSearchResults([]); }} className="size-5 h-5 text-red-500">
+                  <X className="size-3" />
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-800 mx-1" />
           <div className="flex items-center gap-1">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setPageNum(p => Math.max(1, p - 1))}
               disabled={pageNum <= 1}
               className="size-8"
@@ -272,9 +389,9 @@ export default function SecurePdfViewer({
             <span className="text-[12px] font-semibold text-zinc-600 dark:text-zinc-400 min-w-[70px] text-center">
               {pageNum} / {numPages}
             </span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setPageNum(p => Math.min(numPages, p + 1))}
               disabled={pageNum >= numPages}
               className="size-8"
@@ -305,13 +422,13 @@ export default function SecurePdfViewer({
           <div className="w-56 border-r dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/50 overflow-hidden flex flex-col shrink-0 animate-in slide-in-from-left duration-200">
             {/* Tabs */}
             <div className="flex border-b dark:border-white/5 p-1 bg-white/50 dark:bg-zinc-900/50">
-              <button 
+              <button
                 className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all uppercase tracking-tight", sidebarTab === "thumbs" ? "bg-white dark:bg-zinc-800 shadow-sm text-indigo-500" : "text-zinc-400 hover:text-zinc-600")}
                 onClick={() => setSidebarTab("thumbs")}
               >
                 Trang
               </button>
-              <button 
+              <button
                 className={cn("flex-1 py-2 text-sm font-bold rounded-md transition-all uppercase tracking-tight", sidebarTab === "outline" ? "bg-white dark:bg-zinc-800 shadow-sm text-indigo-500" : "text-zinc-400 hover:text-zinc-600")}
                 onClick={() => setSidebarTab("outline")}
                 disabled={!outline || outline.length === 0}
@@ -324,10 +441,10 @@ export default function SecurePdfViewer({
               {sidebarTab === "thumbs" ? (
                 <div className="flex flex-col gap-1">
                   {Array.from({ length: numPages }, (_, i) => (
-                    <Thumbnail 
-                      key={i + 1} 
-                      pdf={pdf} 
-                      pageNo={i + 1} 
+                    <Thumbnail
+                      key={i + 1}
+                      pdf={pdf}
+                      pageNo={i + 1}
                       isActive={pageNum === i + 1}
                       onClick={setPageNum}
                     />
@@ -352,7 +469,7 @@ export default function SecurePdfViewer({
               <p className="text-xs font-medium text-zinc-500 mt-3 italic">Đang mã hóa dữ liệu an toàn...</p>
             </div>
           )}
-          
+
           <div className="relative shadow-2xl shadow-black/20 border dark:border-white/10 bg-white">
             <canvas ref={canvasRef} className="max-w-full h-auto block" />
             <div className="absolute inset-0 z-10 pointer-events-none" />
