@@ -68,7 +68,8 @@ export const authOptions: NextAuthOptions = {
               email: dbUser.email,
               image: dbUser.avatar,
               role: dbUser.role,
-              is_banned: dbUser.is_banned
+              is_banned: dbUser.is_banned,
+              lang: dbUser.lang
             };
           }
         }
@@ -88,12 +89,9 @@ export const authOptions: NextAuthOptions = {
             avatar: user.image || (profile as any).picture
           });
         }
-        token.userId = dbUser.id;
-        token.userName = dbUser.user_name || dbUser.name;
-        token.email = dbUser.email;
-        token.avatar = dbUser.avatar;
         token.role = dbUser.role || 'guest';
         token.is_banned = dbUser.is_banned;
+        token.lang = dbUser.lang || 'en';
       }
       else if (user) {
         token.userId = user.id;
@@ -102,6 +100,7 @@ export const authOptions: NextAuthOptions = {
         token.avatar = user.image;
         token.role = (user as any).role;
         token.is_banned = (user as any).is_banned;
+        token.lang = (user as any).lang || 'en';
       }
       else if (token.userId) {
         const dbUser = await dbConnection.users.findById(token.userId as string);
@@ -109,6 +108,7 @@ export const authOptions: NextAuthOptions = {
           token.role = dbUser.role || 'guest';
           token.is_banned = dbUser.is_banned;
           token.userName = dbUser.user_name || dbUser.name;
+          token.lang = dbUser.lang || 'en';
         }
       }
       return token;
@@ -121,6 +121,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).avatar = token.avatar;
         (session.user as any).role = token.role;
         (session.user as any).is_banned = token.is_banned;
+        (session.user as any).lang = token.lang;
       }
       return session;
     },

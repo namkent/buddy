@@ -18,6 +18,7 @@ import {Thread} from "@/components/assistant-ui/thread";
 import {SidebarInset, SidebarProvider, SidebarTrigger} from "@/components/ui/sidebar";
 import {ThreadListSidebar} from "@/components/assistant-ui/threadlist-sidebar";
 import {ThemeToggle} from "@/components/assistant-ui/theme-toggle";
+import {LanguageToggle} from "@/components/ui/language-toggle";
 import {
   createChatModelAdapter,
   myThreadListAdapter,
@@ -216,7 +217,8 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
           <SidebarInset className="overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2 px-4">
               <SidebarTrigger/>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                <LanguageToggle/>
                 <ThemeToggle/>
               </div>
             </header>

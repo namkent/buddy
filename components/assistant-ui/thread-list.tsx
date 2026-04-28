@@ -13,6 +13,7 @@ import {
 import { ArchiveIcon, MoreHorizontalIcon, PlusIcon, TrashIcon, ChevronDownIcon, MessageSquareIcon } from "lucide-react";
 import { type FC, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/components/i18n/i18n-context";
 
 // ─── ThreadInitializer ────────────────────────────────────────────────────────
 // Tự động switch sang thread khi mở URL /app/{threadId} trực tiếp.
@@ -80,6 +81,7 @@ export const ThreadList: FC = () => {
 
 // ─── ThreadListNew ────────────────────────────────────────────────────────────
 const ThreadListNew: FC = () => {
+  const { t } = useI18n();
   const handleClick = () => {
     // Thread mới chưa có remoteId → URL về /
     window.history.pushState({}, "", "/");
@@ -93,7 +95,7 @@ const ThreadListNew: FC = () => {
         onClick={handleClick}
       >
         <PlusIcon className="size-4" />
-        New Thread
+        {t('menu', 'new_thread', 'New Thread')}
       </Button>
     </ThreadListPrimitive.New>
   );
@@ -130,6 +132,7 @@ const ThreadListItem: FC<{ mode?: "active" | "archived" }> = () => {
 // Tách trigger riêng để dùng useThreadListItemRuntime trong đúng context
 const ThreadListItemTrigger: FC = () => {
   const itemRuntime = useAui().threadListItem();
+  const { t } = useI18n();
 
   const handleClick = () => {
     // Lấy externalId/remoteId của thread list item này (chạy trong context của từng item)
@@ -149,7 +152,7 @@ const ThreadListItemTrigger: FC = () => {
       className="aui-thread-list-item-trigger flex h-full min-w-0 flex-1 items-center truncate px-3 text-start text-sm"
       onClick={handleClick}
     >
-      <ThreadListItemPrimitive.Title fallback="New Chat" />
+      <ThreadListItemPrimitive.Title fallback={t('label', 'new_chat', 'New Chat')} />
     </ThreadListItemPrimitive.Trigger>
   );
 };
@@ -157,6 +160,7 @@ const ThreadListItemTrigger: FC = () => {
 // ─── ThreadListItemMore ───────────────────────────────────────────────────────
 const ThreadListItemMore: FC = () => {
   const status = useAuiState((s) => s.threadListItem.status);
+  const { t } = useI18n();
   return (
     <ThreadListItemMorePrimitive.Root>
       <ThreadListItemMorePrimitive.Trigger asChild>
@@ -177,13 +181,13 @@ const ThreadListItemMore: FC = () => {
         <ThreadListItemPrimitive.Archive asChild>
           <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
             <ArchiveIcon className="size-4" />
-            {status === "archived" ? "Unarchive" : "Archive"}
+            {status === "archived" ? t('label', 'unarchive', 'Unarchive') : t('label', 'archive', 'Archive')}
           </ThreadListItemMorePrimitive.Item>
         </ThreadListItemPrimitive.Archive>
         <ThreadListItemPrimitive.Delete asChild>
           <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-destructive text-sm outline-none hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive">
             <TrashIcon className="size-4" />
-            Delete
+            {t('label', 'delete', 'Delete')}
           </ThreadListItemMorePrimitive.Item>
         </ThreadListItemPrimitive.Delete>
       </ThreadListItemMorePrimitive.Content>
@@ -194,6 +198,7 @@ const ThreadListItemMore: FC = () => {
 // ─── ArchivedSection ─────────────────────────────────────────────────────────
 const ArchivedSection: FC<{ isArchivedOpen: boolean, setIsArchivedOpen: (v: boolean) => void }> = ({ isArchivedOpen, setIsArchivedOpen }) => {
   const archivedCount = useAuiState((s) => s.threads.archivedThreadIds.length);
+  const { t } = useI18n();
 
   if (archivedCount === 0) return null;
 
@@ -205,7 +210,7 @@ const ArchivedSection: FC<{ isArchivedOpen: boolean, setIsArchivedOpen: (v: bool
       >
         <div className="flex items-center gap-2">
           <ArchiveIcon className="size-3" />
-          Archived ({archivedCount})
+          {t('label', 'archived', 'Archived')} ({archivedCount})
         </div>
         <ChevronDownIcon className={cn("size-3 transition-transform duration-500", isArchivedOpen ? "" : "-rotate-180")} />
       </button>

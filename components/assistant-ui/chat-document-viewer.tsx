@@ -26,7 +26,7 @@ const ChatMarkdownViewer = ({ content, filePath }: { content: string; filePath: 
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <MessageProvider message={mockMessage}>
+      <MessageProvider message={mockMessage} index={0}>
         <TextMessagePartProvider text={content}>
           <div className="aui-md prose dark:prose-invert max-w-none font-sans leading-relaxed">
             <MarkdownTextPrimitive

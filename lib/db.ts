@@ -40,7 +40,30 @@ export const dbConnection = {
         role_id INTEGER REFERENCES roles(id) DEFAULT 1,
         avatar TEXT,
         is_banned BOOLEAN DEFAULT false,
+        lang TEXT DEFAULT 'en',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS i18n_types (
+        name TEXT PRIMARY KEY
+      );
+      INSERT INTO i18n_types (name) VALUES ('label'), ('menu'), ('message'), ('notify'), ('status') ON CONFLICT DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS translations (
+        id SERIAL PRIMARY KEY,
+        type TEXT REFERENCES i18n_types(name) ON UPDATE CASCADE,
+        key TEXT NOT NULL,
+        en TEXT,
+        vi TEXT,
+        kr TEXT,
+        ja TEXT,
+        zh TEXT,
+        fr TEXT,
+        de TEXT,
+        es TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(type, key)
       );
     `);
     
@@ -167,6 +190,7 @@ export const dbConnection = {
       await pool.query('ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS feedback INTEGER');
       await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS file_size BIGINT');
       await pool.query('ALTER TABLE knowledge_groups ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT DEFAULT \'en\'');
     } catch(e) {}
   },
 
@@ -185,12 +209,15 @@ export const dbConnection = {
     async updateLastActive(userId: string) {
       await pool.query('UPDATE users SET last_active = NOW() WHERE id = $1', [userId]);
     },
-    async create(user: { id: string, name?: string, email?: string, avatar?: string, password_hash?: string }) {
+    async create(user: { id: string, name?: string, email?: string, avatar?: string, password_hash?: string, lang?: string }) {
       const res = await pool.query(
-        'INSERT INTO users (id, user_name, email, avatar, role_id, password_hash) VALUES ($1, $2, $3, $4, 1, $5) RETURNING *',
-        [user.id, user.name, user.email, user.avatar, user.password_hash || null]
+        'INSERT INTO users (id, user_name, email, avatar, role_id, password_hash, lang) VALUES ($1, $2, $3, $4, 1, $5, $6) RETURNING *',
+        [user.id, user.name, user.email, user.avatar, user.password_hash || null, user.lang || 'en']
       );
       return res.rows[0];
+    },
+    async updateLang(id: string, lang: string) {
+      await pool.query('UPDATE users SET lang = $1 WHERE id = $2', [lang, id]);
     },
     async findAll() {
       const res = await pool.query('SELECT u.*, r.name as role FROM users u JOIN roles r ON u.role_id = r.id ORDER BY u.created_at DESC');
@@ -626,6 +653,62 @@ export const dbConnection = {
       } finally {
         client.release();
       }
+    }
+  },
+  translations: {
+    async getByType(type: string) {
+      const res = await pool.query('SELECT * FROM translations WHERE type = $1', [type]);
+      return res.rows;
+    },
+    async getAll() {
+      const res = await pool.query('SELECT * FROM translations ORDER BY type ASC, key ASC');
+      return res.rows;
+    },
+    async getByLang(lang: string) {
+      // Returns a map of { [type]: { [key]: value } }
+      const res = await pool.query(`SELECT type, key, ${lang} as value FROM translations`);
+      const map: Record<string, Record<string, string>> = {};
+      res.rows.forEach(row => {
+        if (!map[row.type]) map[row.type] = {};
+        map[row.type][row.key] = row.value || '';
+      });
+      return map;
+    },
+    async upsert(data: Record<string, any>) {
+      // Filter out metadata columns that shouldn't be manually inserted/updated
+      const { id, created_at, updated_at, ...cleanData } = data;
+      
+      const columns = Object.keys(cleanData);
+      const values = Object.values(cleanData);
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+      
+      const updateClause = columns
+        .filter(c => c !== 'type' && c !== 'key')
+        .map((c) => `${c} = EXCLUDED.${c}`)
+        .join(', ');
+
+      const query = `
+        INSERT INTO translations (${columns.join(', ')})
+        VALUES (${placeholders})
+        ON CONFLICT (type, key)
+        DO UPDATE SET ${updateClause}${updateClause ? ', ' : ''}updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      const res = await pool.query(query, values);
+      return res.rows[0];
+    },
+    async delete(id: number) {
+      await pool.query('DELETE FROM translations WHERE id = $1', [id]);
+    },
+    async getTypes() {
+      const res = await pool.query('SELECT * FROM i18n_types ORDER BY name ASC');
+      return res.rows.map(r => r.name);
+    },
+    async addType(name: string) {
+      await pool.query('INSERT INTO i18n_types (name) VALUES ($1) ON CONFLICT DO NOTHING', [name]);
+    },
+    async deleteType(name: string) {
+      await pool.query('DELETE FROM i18n_types WHERE name = $1', [name]);
     }
   }
 };

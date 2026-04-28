@@ -4,6 +4,7 @@ import { signIn, getProviders } from "next-auth/react";
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/assistant-ui/theme-toggle";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 
 interface Provider {
   id: string;
@@ -104,7 +105,8 @@ function SignInContent() {
     <div className="min-h-screen bg-zinc-50 dark:bg-[#0a0a0f] flex items-center justify-center relative overflow-hidden p-4 transition-colors duration-500">
 
       {/* Theme Toggle ở góc */}
-      <div className="absolute top-6 right-6 z-50">
+      <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
+        <LanguageToggle />
         <ThemeToggle />
       </div>
 

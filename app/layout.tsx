@@ -6,6 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { HeartbeatProvider } from "@/components/assistant-ui/heartbeat-provider";
 import { Toaster } from "sonner";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { dbConnection } from "@/lib/db";
+import { I18nProvider } from "@/components/i18n/i18n-context";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
@@ -32,13 +36,17 @@ export const metadata: Metadata = {
   description: "MES Chat Assistant",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getServerSession(authOptions);
+  const lang = (session?.user as any)?.lang || "en";
+  const translations = await dbConnection.translations.getByLang(lang);
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={lang} suppressHydrationWarning>
       <body
         className={`${GoogleSans.variable} ${GoogleSansFlex.variable} ${GoogleSansCode.variable} antialiased`}
       >
@@ -49,9 +57,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <AutoLoginRedirect />
-            <HeartbeatProvider />
-            <TooltipProvider>{children}</TooltipProvider>
+            <I18nProvider lang={lang} initialTranslations={translations}>
+              <AutoLoginRedirect />
+              <HeartbeatProvider />
+              <TooltipProvider>{children}</TooltipProvider>
+            </I18nProvider>
           </AuthProvider>
           <Toaster richColors position="top-right" />
         </ThemeProvider>

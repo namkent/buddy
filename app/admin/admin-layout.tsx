@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, LogOut, PanelLeftClose, PanelLeftOpen, Brain, ScrollText } from "lucide-react";
+import { LayoutDashboard, Users, LogOut, PanelLeftClose, PanelLeftOpen, Brain, ScrollText, Languages } from "lucide-react";
 import { ThemeToggle } from "@/components/assistant-ui/theme-toggle";
+import { LanguageToggle } from "@/components/ui/language-toggle";
 
 export default function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -36,6 +37,12 @@ export default function AdminLayoutContent({ children }: { children: React.React
             <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${pathname.startsWith("/admin/knowledge") ? "bg-white dark:bg-white/10 text-violet-600 dark:text-white shadow-sm" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/5"} ${collapsed ? "justify-center px-0" : ""}`}>
               <Brain className="size-5 shrink-0" />
               {!collapsed && <span className="font-medium text-base whitespace-nowrap">Knowledge</span>}
+            </div>
+          </Link>
+          <Link href="/admin/i18n">
+            <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${pathname === "/admin/i18n" ? "bg-white dark:bg-white/10 text-violet-600 dark:text-white shadow-sm" : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-white/5"} ${collapsed ? "justify-center px-0" : ""}`}>
+              <Languages className="size-5 shrink-0" />
+              {!collapsed && <span className="font-medium text-base whitespace-nowrap">Languages</span>}
             </div>
           </Link>
           <Link href="/admin/users">
@@ -79,7 +86,10 @@ export default function AdminLayoutContent({ children }: { children: React.React
           >
             {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
           </button>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <ThemeToggle />
+          </div>
         </div>
 
         <div className="absolute top-0 right-[-10%] w-[500px] h-[500px] bg-violet-600/5 dark:bg-violet-600/10 rounded-full blur-[120px] pointer-events-none" />

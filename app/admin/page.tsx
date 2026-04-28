@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import {
   Users, MessagesSquare, MessageCircle, Wifi, Trophy,
-  ThumbsUp, ThumbsDown, MessageSquareQuote, CheckCircle2, XCircle
+  ThumbsUp, ThumbsDown, MessageSquareQuote, CheckCircle2, XCircle, Languages
 } from "lucide-react";
+import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -165,6 +166,22 @@ export default function AdminDashboardPage() {
       <div className="shrink-0">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white mb-1">Overview</h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-base">Welcome to the MES Assistant administration panel.</p>
+      </div>
+
+      <div className="shrink-0 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link href="/admin/i18n">
+          <Card className="hover:border-violet-500/50 transition-colors cursor-pointer group shadow-sm bg-white dark:bg-white/5 border-zinc-200 dark:border-white/10">
+            <CardHeader className="p-4 flex flex-row items-center gap-4 space-y-0">
+              <div className="p-2 rounded-lg bg-violet-500/10 text-violet-500 group-hover:scale-110 transition-transform">
+                <Languages className="size-6" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Quản lý Ngôn ngữ</CardTitle>
+                <CardDescription className="text-xs">Cấu hình i18n & Dịch thuật AI</CardDescription>
+              </div>
+            </CardHeader>
+          </Card>
+        </Link>
       </div>
 
       {/* Main Body Area */}

@@ -15,6 +15,7 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { US, VN, KR, JP, CN, FR, DE, ES } from 'country-flag-icons/react/3x2';
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -57,6 +58,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { FC } from "react";
 import * as LucideIcons from "lucide-react";
+
+const LANGUAGES = [
+  { id: 'en', name: 'English', Flag: US },
+  { id: 'vi', name: 'Tiếng Việt', Flag: VN },
+  { id: 'kr', name: '한국어', Flag: KR },
+  { id: 'ja', name: '日本語', Flag: JP },
+  { id: 'zh', name: '中文', Flag: CN },
+  { id: 'fr', name: 'Français', Flag: FR },
+  { id: 'de', name: 'Deutsch', Flag: DE },
+  { id: 'es', name: 'Español', Flag: ES },
+];
 
 const AgentIcon = ({ icon, className }: { icon: string, className?: string }) => {
   if (!icon) return <LucideIcons.Bot className={cn("size-4", className)} />;
@@ -215,7 +227,7 @@ const Composer: FC = () => {
   const aui = useAui();
 
   const [chatMode, setChatMode] = useState<"normal" | "search" | "translate" | "agent">("normal");
-  const [targetLang, setTargetLang] = useState<{ id: string, name: string, emoji: string }>({ id: "vi", name: "Vietnamese", emoji: "🇻🇳" });
+  const [targetLang, setTargetLang] = useState(LANGUAGES[1]); // Default to Tiếng Việt
   const [knowledgeGroups, setKnowledgeGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [agents, setAgents] = useState<any[]>([]);
@@ -330,28 +342,29 @@ const Composer: FC = () => {
                 {chatMode === "translate" && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-1 ml-1 pl-2 border-l border-indigo-500/30 hover:text-indigo-600 transition-colors uppercase cursor-pointer select-none">
-                        {targetLang.emoji} {targetLang.name}
+                      <button className="flex items-center gap-1.5 ml-1 pl-2 border-l border-indigo-500/30 hover:text-indigo-600 transition-colors uppercase cursor-pointer select-none">
+                        <div className="w-4.5 h-3">
+                          <targetLang.Flag className="w-full h-full" />
+                        </div>
+                        <span className="max-w-[80px] truncate">{targetLang.name}</span>
                         <ChevronRightIcon className="size-2.5 rotate-90" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent side="top" sideOffset={12} align="start" className="w-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                      {[
-                        { id: "vi", name: "Vietnamese", emoji: "🇻🇳" },
-                        { id: "en", name: "English", emoji: "🇺🇸" },
-                        { id: "ko", name: "Korean", emoji: "🇰🇷" },
-                        { id: "hi", name: "Hindi", emoji: "🇮🇳" },
-                        { id: "zh", name: "Chinese", emoji: "🇨🇳" },
-                        { id: "ja", name: "Japanese", emoji: "🇯🇵" },
-                        { id: "th", name: "Thai", emoji: "🇹🇭" }
-                      ].map((l) => (
+                    <DropdownMenuContent side="top" sideOffset={12} align="start" className="w-48 p-1.5 animate-in fade-in slide-in-from-bottom-2 duration-200 rounded-xl">
+                      {LANGUAGES.map((l) => (
                         <DropdownMenuItem
                           key={l.id}
                           onClick={() => setTargetLang(l)}
-                          className="flex items-center gap-2 text-sm cursor-pointer select-none"
+                          className={cn(
+                            "flex items-center gap-2.5 text-sm cursor-pointer select-none px-2 py-2 rounded-lg transition-colors mb-0.5 last:mb-0",
+                            targetLang.id === l.id ? "bg-indigo-500/10 text-indigo-500" : "hover:bg-muted"
+                          )}
                         >
-                          <span>{l.emoji}</span>
-                          <span>{l.name}</span>
+                          <div className="w-6 h-4 shadow-sm">
+                            <l.Flag className="w-full h-full" />
+                          </div>
+                          <span className="font-semibold">{l.name}</span>
+                          {targetLang.id === l.id && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuContent>
