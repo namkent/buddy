@@ -37,7 +37,11 @@ const ThreadInitializer: FC = () => {
       aui.threads().switchToThread(threadId);
     } catch (e: unknown) {
       console.error("[MES Assistant] Could not restore thread from URL:", e);
-      doneRef.current = false; // allow retry on next render if failed
+      // Ngăn crash và chuyển hướng về trang chủ
+      window.history.pushState({}, "", "/");
+      try {
+        aui.threads().switchToNewThread();
+      } catch {}
     }
   }, [isLoading, aui]);
 
@@ -160,6 +164,9 @@ const ThreadListItemTrigger: FC = () => {
 // ─── ThreadListItemMore ───────────────────────────────────────────────────────
 const ThreadListItemMore: FC = () => {
   const status = useAuiState((s) => s.threadListItem.status);
+  const activeThreadId = useAuiState((s) => s.threads.mainThreadId);
+  const aui = useAui();
+  const itemRuntime = aui.threadListItem();
   const { t } = useI18n();
   return (
     <ThreadListItemMorePrimitive.Root>
@@ -185,7 +192,18 @@ const ThreadListItemMore: FC = () => {
           </ThreadListItemMorePrimitive.Item>
         </ThreadListItemPrimitive.Archive>
         <ThreadListItemPrimitive.Delete asChild>
-          <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-destructive text-sm outline-none hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive">
+          <ThreadListItemMorePrimitive.Item 
+            onSelect={() => {
+              const itemState = itemRuntime.getState();
+              const threadId = itemState.externalId ?? itemState.remoteId;
+              if (threadId === activeThreadId) {
+                window.history.pushState({}, "", "/");
+                try {
+                  aui.threads().switchToNewThread();
+                } catch {}
+              }
+            }}
+            className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-destructive text-sm outline-none hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive">
             <TrashIcon className="size-4" />
             {t('label', 'delete', 'Delete')}
           </ThreadListItemMorePrimitive.Item>

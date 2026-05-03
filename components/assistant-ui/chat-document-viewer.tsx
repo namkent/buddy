@@ -37,30 +37,38 @@ const ChatMarkdownViewer = ({ content, filePath }: { content: string; filePath: 
                   if (!src || typeof src !== "string") return null;
                   const fileServerUrl = process.env.NEXT_PUBLIC_FILE_SERVER_URL || "/api/files";
                   let fullSrc = src;
-                  if (src.startsWith("/group_")) {
-                    fullSrc = `${fileServerUrl}${src}`;
-                  } else if (!src.startsWith("http") && filePath) {
-                    let dir = filePath.substring(0, filePath.lastIndexOf("/"));
-                    if (dir.endsWith("/origin")) dir = dir.substring(0, dir.lastIndexOf("/origin"));
-                    fullSrc = `${fileServerUrl}${dir}/${src.startsWith("./") ? src.substring(2) : src}`;
+                  try {
+                    if (src.startsWith("/group_")) {
+                      fullSrc = `${fileServerUrl}/encoded/${btoa(encodeURIComponent(src))}`;
+                    } else if (!src.startsWith("http") && filePath) {
+                      let dir = filePath.substring(0, filePath.lastIndexOf("/"));
+                      if (dir.endsWith("/origin")) dir = dir.substring(0, dir.lastIndexOf("/origin"));
+                      const rawSrc = `${dir}/${src.startsWith("./") ? src.substring(2) : src}`;
+                      fullSrc = `${fileServerUrl}/encoded/${btoa(encodeURIComponent(rawSrc))}`;
+                    }
+                  } catch (e) {
+                    // Fallback in case of encoding error
+                    if (src.startsWith("/group_")) {
+                      fullSrc = `${fileServerUrl}${src}`;
+                    }
                   }
                   return <img src={fullSrc} alt={alt ?? "image"} className="my-4 max-w-full rounded-xl border shadow-sm" {...props} />;
                 },
                 a: ({ href, children, ...props }) => {
                   if (href?.startsWith("cite:")) {
                     return (
-                      <a 
-                        href={href} 
+                      <a
+                        href="#"
                         onClick={(e) => {
                           e.preventDefault();
                           const params = new URLSearchParams(href.substring(5));
-                          window.dispatchEvent(new CustomEvent("open-document", { 
+                          window.dispatchEvent(new CustomEvent("open-document", {
                             detail: {
                               id: parseInt(params.get("id") || "0"),
                               file_path: params.get("path"),
                               file_name: params.get("name"),
                               page: params.get("page")
-                            } 
+                            }
                           }));
                         }}
                         className="text-indigo-600 hover:underline cursor-pointer font-medium"
@@ -109,13 +117,21 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
     }
   }, [isOpen, file]);
 
+  const encodePath = (p: string) => {
+    try {
+      return btoa(encodeURIComponent(p));
+    } catch {
+      return "";
+    }
+  };
+
   const loadContent = async () => {
     if (!file) return;
     setLoading(true);
     try {
       const basePath = file.file_path.replace(/\.[^/.]+$/, "");
-      const pdfUrl = `/api/files${basePath}.pdf`;
-      
+      const pdfUrl = `/api/files/encoded/${encodePath(basePath + '.pdf')}`;
+
       // 1. Kiểm tra xem có file PDF gốc không
       const pdfCheck = await fetch(pdfUrl, { method: 'HEAD' });
       if (pdfCheck.ok) {
@@ -126,7 +142,7 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
       }
 
       // 2. Nếu không có PDF, mới tìm file .md
-      const mdUrl = `/api/files${basePath}.md`;
+      const mdUrl = `/api/files/encoded/${encodePath(basePath + '.md')}`;
       const mdResponse = await fetch(mdUrl);
       if (mdResponse.ok) {
         const text = await mdResponse.text();
@@ -134,7 +150,7 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
         setIsPdf(false);
       } else if (!isPdf) {
         // 3. Cuối cùng mới thử đọc file gốc nếu là text/html
-        const res = await fetch(`/api/files${file.file_path}`);
+        const res = await fetch(`/api/files/encoded/${encodePath(file.file_path)}`);
         if (res.ok) {
           const text = await res.text();
           setMarkdownContent(text);
@@ -151,9 +167,9 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent 
+      <DialogContent
         showCloseButton={false}
-        className="sm:max-w-none w-[95vw] md:w-[80vw] lg:w-[65vw] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-zinc-900 border-none dark:border dark:border-white/5 shadow-2xl rounded-2xl"
+        className="sm:max-w-none w-[95vw] md:w-[80vw] lg:w-[65vw] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden bg-white dark:bg-zinc-900 border-none dark:border dark:border-white/5 shadow-lg rounded-lg"
       >
         <DialogHeader className="px-6 py-4 border-b dark:border-white/10 bg-zinc-50/50 dark:bg-zinc-800/30 shrink-0 flex flex-row items-center justify-between">
           <div className="flex flex-col gap-1 overflow-hidden">
@@ -186,8 +202,8 @@ export default function ChatDocumentViewer({ isOpen, onClose, file }: ChatDocume
               <p className="text-xs text-zinc-400">Đang tải nội dung...</p>
             </div>
           ) : isPdf && !markdownContent ? (
-            <SecurePdfViewer 
-              url={`/api/files${file.file_path.replace(/\.[^/.]+$/, ".pdf")}`} 
+            <SecurePdfViewer
+              url={`/api/files/encoded/${encodePath(file.file_path.replace(/\.[^/.]+$/, ".pdf"))}`}
               initialPage={file.page ? parseInt(String(file.page).split(',')[0].trim()) : 1}
             />
           ) : markdownContent ? (

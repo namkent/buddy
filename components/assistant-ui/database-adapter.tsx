@@ -244,16 +244,22 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
 
 export const myThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
-    const res = await fetch("/api/chat/threads");
-    const threads = await res.json();
-    return {
-      threads: threads.map((t: any) => ({
-        status: t.archived ? "archived" : "regular",
-        remoteId: t.id,
-        title: t.title,
-        externalId: t.id,
-      })),
-    };
+    try {
+      const res = await fetch("/api/chat/threads");
+      if (!res.ok) return { threads: [] };
+      const threads = await res.json();
+      if (!Array.isArray(threads)) return { threads: [] };
+      return {
+        threads: threads.map((t: any) => ({
+          status: t.archived ? "archived" : "regular",
+          remoteId: t.id,
+          title: t.title,
+          externalId: t.id,
+        })),
+      };
+    } catch {
+      return { threads: [] };
+    }
   },
 
   async initialize(threadId: string) {

@@ -16,7 +16,19 @@ export async function GET(
   if (error) return error;
 
   try {
-    const { path: pathSegments } = await params;
+    const paramsResolved = await params;
+    let pathSegments = paramsResolved.path;
+    
+    // Xử lý giải mã path nếu client gửi dưới dạng obfuscated (mã hóa Base64)
+    if (pathSegments[0] === 'encoded' && pathSegments[1]) {
+      try {
+        const decodedStr = decodeURIComponent(Buffer.from(pathSegments[1], 'base64').toString('utf8'));
+        // Chia lại thành mảng pathSegments
+        pathSegments = decodedStr.split('/').filter(Boolean);
+      } catch (err) {
+        return errorResponse("Đường dẫn không hợp lệ", 400);
+      }
+    }
     
     // 2. Lấy đường dẫn gốc (Root) của storage từ biến môi trường
     const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(/*turbopackIgnore: true*/ process.cwd(), 'external_storage');

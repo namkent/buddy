@@ -94,7 +94,7 @@ function Source({
       className={cn(sourceVariants({ variant, size }), "cursor-pointer", className)}
       target={target}
       rel={rel}
-      href={href}
+      href={href?.startsWith("cite:") ? "#" : href}
       onClick={handleClick as any}
       {...props}
     />

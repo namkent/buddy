@@ -2,6 +2,8 @@ import { dbConnection } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { requireAuth, errorResponse, successResponse } from "@/lib/api-utils";
 
+export const dynamic = "force-dynamic";
+
 /**
  * [GET] Lấy danh sách hội thoại của người dùng hoặc chi tiết một hội thoại
  */

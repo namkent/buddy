@@ -1,5 +1,7 @@
+"use client";
+
 import * as React from "react";
-import {MessagesSquare} from "lucide-react";
+import { MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import {
   Sidebar,
@@ -11,12 +13,21 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import {ThreadList} from "@/components/assistant-ui/thread-list";
-import {UserProvider} from "@/components/assistant-ui/user-provider";
+import { ThreadList } from "@/components/assistant-ui/thread-list";
+import { UserProvider } from "@/components/assistant-ui/user-provider";
+import { useAui } from "@assistant-ui/react";
 
 export function ThreadListSidebar({
-                                    ...props
-                                  }: React.ComponentProps<typeof Sidebar>) {
+  ...props
+}: React.ComponentProps<typeof Sidebar>) {
+  const aui = useAui();
+
+  const handleLogoClick = () => {
+    try {
+      aui.threads().switchToNewThread();
+    } catch (e) {}
+  };
+
   return (
     <Sidebar {...props}>
       <SidebarHeader className="aui-sidebar-header mb-2 border-b">
@@ -25,13 +36,13 @@ export function ThreadListSidebar({
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild>
                 <Link
-                  href="http://sdvmes.samsungdisplay.net:9095"
-                  target="_blank"
+                  href="/"
                   rel="noopener noreferrer"
+                  onClick={handleLogoClick}
                 >
                   <div
                     className="aui-sidebar-header-icon-wrapper flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <MessagesSquare className="aui-sidebar-header-icon size-4"/>
+                    <MessagesSquare className="aui-sidebar-header-icon size-4" />
                   </div>
                   <div className="aui-sidebar-header-heading mr-6 flex flex-col gap-0.5 leading-none">
                     <span className="aui-sidebar-header-title font-semibold text-xl">
@@ -45,9 +56,9 @@ export function ThreadListSidebar({
         </div>
       </SidebarHeader>
       <SidebarContent className="aui-sidebar-content pl-2 pr-0">
-        <ThreadList/>
+        <ThreadList />
       </SidebarContent>
-      <SidebarRail/>
+      <SidebarRail />
       <SidebarFooter className="aui-sidebar-footer border-t">
         <SidebarMenu>
           <SidebarMenuItem>

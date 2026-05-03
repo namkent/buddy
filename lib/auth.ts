@@ -89,6 +89,10 @@ export const authOptions: NextAuthOptions = {
             avatar: user.image || (profile as any).picture
           });
         }
+        token.userId = dbUser.id;
+        token.userName = dbUser.user_name || dbUser.name;
+        token.email = dbUser.email;
+        token.avatar = dbUser.avatar;
         token.role = dbUser.role || 'guest';
         token.is_banned = dbUser.is_banned;
         token.lang = dbUser.lang || 'en';
@@ -105,6 +109,17 @@ export const authOptions: NextAuthOptions = {
       else if (token.userId) {
         const dbUser = await dbConnection.users.findById(token.userId as string);
         if (dbUser) {
+          token.role = dbUser.role || 'guest';
+          token.is_banned = dbUser.is_banned;
+          token.userName = dbUser.user_name || dbUser.name;
+          token.lang = dbUser.lang || 'en';
+        }
+      }
+      else if (token.email) {
+        // Fallback tự phục hồi session cũ bị mất userId
+        const dbUser = await dbConnection.users.findByEmail(token.email as string);
+        if (dbUser) {
+          token.userId = dbUser.id;
           token.role = dbUser.role || 'guest';
           token.is_banned = dbUser.is_banned;
           token.userName = dbUser.user_name || dbUser.name;
