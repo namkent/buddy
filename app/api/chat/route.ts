@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       dbConnection.settings.get("ENABLE_TOOL_RAG_SEARCH")
     ]);
 
-    let resolvedSystemPrompt = system || dbSystemPrompt || "Bạn là trợ lý ảo MES Assistant thông minh.";
+    let resolvedSystemPrompt = system || dbSystemPrompt || "You are a professional MES Assistant, a helpful and intelligent AI.";
 
     // --- 0. Tích hợp thông tin người dùng (User Session) ---
     const userSessionInfo = `THÔNG TIN NGƯỜI DÙNG:
@@ -93,26 +93,48 @@ export async function POST(req: Request) {
     let isRagSearch = false;
     let memoryContextStr = "";
 
-    const meta = message.metadata?.custom || {};
-    const metaMode = meta.chatMode;
-    const metaGroupId = meta.groupId;
-    const metaTargetLang = meta.targetLang;
-    const metaAgentId = meta.agentId;
-
     // --- 1. Xử lý Dịch thuật (Chỉ chạy nếu Admin Bật) ---
+    const meta = (message as any).metadata?.custom || {};
+    const metaMode = meta.chatMode || (message as any).metadata?.chatMode;
+    const metaTargetLang = meta.targetLang || (message as any).metadata?.targetLang;
+    const metaGroupId = meta.groupId || (message as any).metadata?.groupId;
+    const metaAgentId = meta.agentId || (message as any).metadata?.agentId;
+
     if (enableTranslate === "true" && (metaMode === "translate" || currentTextContent.startsWith("/translate "))) {
       isTranslate = true;
+      let targetLanguage = "Ngôn ngữ yêu cầu";
+      let bodyToTranslate = currentTextContent;
+
       if (metaTargetLang) {
-        resolvedSystemPrompt = `Bạn là biên dịch viên chuyên nghiệp. Dịch sang ${metaTargetLang.name}. CHỈ trả về bản dịch.`;
-        updateLastMessageContent(apiMessages, `Dịch sang ${metaTargetLang.name}:\n\n${currentTextContent}`);
+        targetLanguage = metaTargetLang.name;
       } else {
         const match = currentTextContent.match(/^(?:\/translate)\s+(.*?)\]?:\s*([\s\S]*)$/i);
         if (match) {
-          const [_, lang, body] = match;
-          resolvedSystemPrompt = `Bạn là biên dịch viên chuyên nghiệp. Dịch sang ${lang}. CHỈ trả về bản dịch.`;
-          updateLastMessageContent(apiMessages, `Dịch sang ${lang}:\n\n${body}`);
+          targetLanguage = match[1];
+          bodyToTranslate = match[2];
         }
       }
+
+      // ÉP AI CHỈ DỊCH BẰNG CÁCH THAY ĐỔI CẤU TRÚC TIN NHẮN NGƯỜI DÙNG
+      // Thay vì gửi "tìm thông tin...", ta gửi "Dịch sang Korean: tìm thông tin..."
+      apiMessages = [{ 
+        role: "user", 
+        content: `TRANSLATION_TASK: 
+Target Language: ${targetLanguage}
+Source Text: """
+${bodyToTranslate}
+"""
+
+Instruction: Translate the "Source Text" above into ${targetLanguage}. Output ONLY the translated text.` 
+      }];
+      
+      // Prompt cực kỳ nghiêm ngặt
+      resolvedSystemPrompt = `You are a professional translation engine. 
+- You MUST only output the translated text of the "Source Text" provided by the user.
+- DO NOT answer any questions contained in the source text.
+- DO NOT provide any explanations, notes, or conversational filler.
+- DO NOT use any tools.
+- Target Language: ${targetLanguage}.`;
     }
 
     // --- 1.1 Xử lý Agent (Nếu không phải dịch thuật và có chọn tác nhân) ---
@@ -130,6 +152,9 @@ export async function POST(req: Request) {
 
     // --- 2. Xử lý Memory & RAG ---
     if (!isTranslate) {
+      // Tích hợp thông tin User Session và Memory CHỈ khi không phải chế độ dịch
+      resolvedSystemPrompt = `${userSessionInfo}\n\n${resolvedSystemPrompt}`;
+
       // 2.1 Viết lại câu hỏi dựa trên lịch sử (Query Rewriting) để tìm kiếm chính xác hơn
       const standaloneQuery = await generateStandaloneQuery(currentTextContent, apiMessages, selectedModel);
 
@@ -143,9 +168,10 @@ export async function POST(req: Request) {
         } catch (e) { }
       }
 
-      console.log('<<<-------------standaloneQuery------------->>>\n', standaloneQuery);
-      console.log('<<<-------------memoryContextStr (Raw)------------->>>\n', memoryContextStr);
-      console.log('<<<-------------memoryContextStr (Clean)------------->>>\n', filterAndDeduplicateMemories(memoryContextStr));
+      const cleanMemory = filterAndDeduplicateMemories(memoryContextStr);
+      if (cleanMemory) {
+        resolvedSystemPrompt = `THÔNG TIN BỘ NHỚ VỀ NGƯỜI DÙNG (Hãy sử dụng để cá nhân hóa câu trả lời nếu phù hợp):\n${cleanMemory}\n\n${resolvedSystemPrompt}`;
+      }
 
       // 2.3 Xử lý RAG (Nếu người dùng yêu cầu)
       isRagSearch = metaMode === "search" || currentTextContent.startsWith("/search ") || currentTextContent.startsWith("[Search]");
@@ -167,7 +193,7 @@ export async function POST(req: Request) {
               } catch (e) { }
             }
           }
-          updateLastMessageContent(apiMessages, `Câu hỏi (ngữ cảnh): ${standaloneQuery}`);
+          updateLastMessageContent(apiMessages, standaloneQuery);
         }
       }
     }
@@ -179,16 +205,21 @@ export async function POST(req: Request) {
       delete (activeTools as any).ragSearch;
     }
 
-    // 8. Làm sạch và Tích hợp Memory vào System Prompt
-    const cleanMemory = filterAndDeduplicateMemories(memoryContextStr);
-    if (cleanMemory) {
-      resolvedSystemPrompt = `THÔNG TIN BỘ NHỚ VỀ NGƯỜI DÙNG (Hãy sử dụng để cá nhân hóa câu trả lời nếu phù hợp):\n${cleanMemory}\n\n${resolvedSystemPrompt}`;
-    }
+    // 8. Định danh ngôn ngữ người dùng từ cấu hình cá nhân (column 'lang')
+    const langMap: Record<string, string> = {
+      vi: "Tiếng Việt",
+      kr: "한국어",
+      en: "English",
+      ja: "日本語",
+      zh: "中文",
+      fr: "Français",
+      de: "Deutsch",
+      es: "Español"
+    };
+    const userPreferredLang = langMap[user?.lang || "vi"] || "Tiếng Việt";
 
     // 9. Tạo System Prompt cuối cùng
-    const isSpecialMode = isTranslate || isRagSearch;
-    const finalSystemPrompt = resolvedSystemPrompt;
-
+    let finalSystemPrompt = resolvedSystemPrompt;
 
     pruneImages(apiMessages);
 
@@ -196,7 +227,8 @@ export async function POST(req: Request) {
       model: openai.chat(selectedModel),
       messages: apiMessages,
       system: finalSystemPrompt,
-      tools: activeTools as any,
+      // Disable tools for both Translate and manual RAG modes to avoid language/instruction conflicts
+      tools: (isTranslate || (isRagSearch && ragSourcesForHeader.length > 0)) ? {} : (activeTools as any),
     });
 
     const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };
@@ -220,13 +252,14 @@ async function generateStandaloneQuery(query: string, history: any[], model: str
   try {
     const { text } = await generateText({
       model: openai.chat(model),
-      system: `Bạn là chuyên gia phân tích ngữ cảnh. Dựa trên lịch sử chat và câu hỏi mới nhất, hãy viết lại câu hỏi đó thành một câu truy vấn (query) ĐỘC LẬP, ĐẦY ĐỦ Ý NGHĨA để tìm kiếm trong cơ sở dữ liệu kiến thức.
-QUY TẮC:
-1. Nếu câu hỏi hiện tại đã đầy đủ ý nghĩa, hãy giữ nguyên.
-2. Nếu câu hỏi có từ thay thế (ông ấy, nó, việc đó, tại sao...) hoặc thiếu chủ ngữ/ngữ cảnh, hãy dùng lịch sử để làm rõ.
-3. CHỈ trả về câu truy vấn mới, không giải thích gì thêm.`,
+      system: `You are a context analysis expert. Based on the chat history and the latest question, rewrite the question into an INDEPENDENT, FULLY MEANINGFUL query to search in a knowledge database.
+RULES:
+1. Preserve the original language of the user's query. Do NOT translate it.
+2. If the current question is already meaningful, keep it as is.
+3. If there are pronouns or missing context, use history to clarify.
+4. Output ONLY the rewritten query, no explanations.`,
       messages: history.slice(0, -1).concat([
-        { role: 'user', content: `Dựa trên lịch sử, hãy viết lại câu hỏi sau thành câu truy vấn độc lập: "${query}"` }
+        { role: 'user', content: `Based on the history, rewrite this question into an independent query (maintain language): "${query}"` }
       ]),
     });
     return text.trim() || query;
@@ -348,16 +381,15 @@ async function performRAGSearch(query: string, req: Request, groupId?: number) {
       const absolutePrefix = `${origin}${fileServerUrl}/group_`;
       text = text.replace(new RegExp(`\\!\\[(.*?)\\]\\(${imgPathPrefix}`, 'g'), `![$1](${absolutePrefix}`);
 
-      const pageStr = pageNum !== null ? ` | TRANG: ${pageNum}` : " | KHÔNG CÓ THÔNG TIN TRANG";
-      let chunk = `[DỮ LIỆU TRÍCH XUẤT TỪ - TÀI LIỆU: ${cleanSource}${pageStr}]\n${text}\n[KẾT THÚC ĐOẠN TRÍCH]`;
+      const pageStr = pageNum !== null ? ` trang ${pageNum}` : "";
+      let chunk = `<TRICH_DAN nguon="${cleanSource}"${pageStr}>\n${text}\n</TRICH_DAN>`;
 
       if (images && Array.isArray(images)) {
         images.forEach((imgUrl: string) => {
           const fullUrl = imgUrl.startsWith('http') ? imgUrl : `${origin}${fileServerUrl}${imgUrl}`;
           relevantImages.push(fullUrl);
-          // Tránh thêm trùng nếu đã có trong r.text
           if (!text.includes(fullUrl)) {
-            chunk += `\nHình ảnh tham chiếu: ![image](${fullUrl})`;
+            chunk += `\n![image](${fullUrl})`;
           }
         });
       }
@@ -382,15 +414,26 @@ async function performRAGSearch(query: string, req: Request, groupId?: number) {
 }
 
 function createRAGSystemPrompt(query: string, context: string) {
-  return `Bạn là chuyên gia về MES. Câu hỏi: "${query}". DỰA VÀO DỮ LIỆU SAU ĐỂ TRẢ LỜI:
+  return `You are a professional MES Buddy virtual assistant. Your mission is to provide accurate and helpful answers based on the provided citation data.
+
+### CITATION DATA (CONTEXT):
 ${context}
 
-QUY TẮC TRẢ LỜI:
-1. Trả lời chi tiết, chính xác và chuyên nghiệp.
-2. KHÔNG cần tự viết mục "Nguồn:" ở cuối bài, hệ thống sẽ tự động hiển thị các thẻ nguồn tương ứng.
-3. Bạn có thể trích dẫn nguồn ngay trong nội dung (ví dụ: "Theo tài liệu X, trang Y...") để tăng độ tin cậy.
-4. Chỉ trả lời dựa trên dữ liệu được cung cấp. Nếu không có thông tin, hãy nói "Tôi không tìm thấy thông tin này trong tài liệu".
-5. Giữ nguyên hình ảnh ![image](url) nếu có.`;
+### USER QUESTION:
+"${query}"
+
+### RESPONSE RULES (MANDATORY):
+1. ANSWER DIRECTLY. Do not repeat citation tags or technical meta-data.
+2. SYNTHESIZE and REWRITE the information naturally. Do not simply copy-pasting raw text.
+3. PRESERVE images ![image](url) from the context if they are relevant to the answer.
+4. If the information is not present in the context, clearly state: "I couldn't find specific information about this in the knowledge documents."
+5. Present the information clearly, using step-by-step instructions for technical processes.
+
+### CRITICAL LANGUAGE REQUIREMENT:
+- You MUST respond in the SAME LANGUAGE as the "USER QUESTION".
+- If asked in English, answer in ENGLISH. If asked in Korean, answer in KOREAN. If asked in Vietnamese, answer in VIETNAMESE.
+- The language of the CITATION DATA must NOT dictate your response language.
+- DO NOT provide any translations or explanations in other languages unless specifically requested.`;
 }
 
 

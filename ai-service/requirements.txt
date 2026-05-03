@@ -1,2 +1,4 @@
 pymupdf==1.27.2.2
 pillow==12.1.1
+python-dotenv==1.0.1
+requests==2.32.3

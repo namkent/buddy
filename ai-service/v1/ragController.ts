@@ -31,7 +31,7 @@ export async function executeRagPipeline(data: any) {
     const mimeType = getMimeType(file_path);
     const text = await parseFile(file_path, mimeType, file_id, group_id);
     
-    // Giai đoạn 2.5: Lưu bản sao Markdown để debug/so sánh
+    // Giai đoạn 2.5: Lưu bản sao Markdown để debug/so sánh (Sử dụng text nguyên bản)
     try {
       const STORAGE_ROOT = process.env.EXTERNAL_STORAGE_PATH || 
                            (process.env.STORAGE_DIR ? path.join(process.env.STORAGE_DIR, "datas") : path.join(process.cwd(), "..", "external_storage"));
@@ -42,9 +42,7 @@ export async function executeRagPipeline(data: any) {
         absoluteFilePath = path.join(STORAGE_ROOT, relativePath);
       }
       const markdownPath = absoluteFilePath.replace(/\.[^/.]+$/, ".md");
-      const relativeImagesPath = `/group_${group_id}/file_${file_id}/images/`;
-      const portableText = text.replace(new RegExp(relativeImagesPath, 'g'), './images/');
-      fs.writeFileSync(markdownPath, portableText, "utf8");
+      fs.writeFileSync(markdownPath, text, "utf8");
     } catch (mdErr) { }
     
     // Giai đoạn 3: Chia nhỏ văn bản & Gắn Metadata (Trang)
@@ -61,9 +59,11 @@ export async function executeRagPipeline(data: any) {
         if (!pageContent?.trim()) continue;
         const subChunks = await splitText(pageContent);
         subChunks.forEach((sc, idx) => {
+          // Trích xuất URL ảnh từ chunk, lưu vào metadata, xóa khỏi text
+          const { cleanText, images } = extractAndStripImages(sc);
           processedChunks.push({
-            text: sc,
-            metadata: { source: file_name, file_path, index: processedChunks.length, file_id: parseInt(file_id), page: pageNum }
+            text: cleanText,
+            metadata: { source: file_name, file_path, index: processedChunks.length, file_id: parseInt(file_id), page: pageNum, images }
           });
         });
       }
@@ -72,16 +72,19 @@ export async function executeRagPipeline(data: any) {
     // Nếu không phải PDF hoặc không tách được theo trang, xử lý bình thường
     if (processedChunks.length === 0) {
       const chunks = await splitText(text);
-      processedChunks = chunks.map((c, i) => ({
-        text: c,
-        metadata: { source: file_name, file_path, index: i, file_id: parseInt(file_id) }
-      }));
+      processedChunks = chunks.map((c, i) => {
+        const { cleanText, images } = extractAndStripImages(c);
+        return {
+          text: cleanText,
+          metadata: { source: file_name, file_path, index: i, file_id: parseInt(file_id), images }
+        };
+      });
     }
     await sleep(300);
 
     // Giai đoạn 4: Vector Embedding
     sseManager.sendProgress(String(group_id), String(file_id), 30, 'processing', 'Loading AI...');
-    const model = process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+    const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
     const pipeline = await AIEngines.getPipeline("feature-extraction", model);
     
     const batchSize = 10;
@@ -119,6 +122,7 @@ export async function executeRagPipeline(data: any) {
     await db.query("UPDATE knowledge_files SET status = 'completed', progress = 100, error_message = NULL WHERE id = $1", [file_id]);
     sseManager.sendProgress(String(group_id), String(file_id), 100, 'completed', 'Done');
   } catch (error: any) {
+    console.error("RAG Pipeline Error:", error);
     await db.query("UPDATE knowledge_files SET status = 'error', error_message = $1 WHERE id = $2", [error.message, file_id]);
     sseManager.sendProgress(String(group_id), String(file_id), 0, 'error', 'Failed');
   }
@@ -136,7 +140,7 @@ export const searchRag = async (req: Request, res: Response) => {
   if (!query) return res.status(400).json({ error: "Query is required" });
 
   try {
-    const model = process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+    const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
     const pipeline = await AIEngines.getPipeline("feature-extraction", model);
     const output = await pipeline([query], { pooling: "mean", normalize: true });
     const vector = output.tolist()[0];
@@ -159,12 +163,39 @@ export const searchRag = async (req: Request, res: Response) => {
     }
 
     const results = await queryBuilder.toArray();
-    const formattedResults = results.map(r => ({
-      text: (r as any).text,
-      file_id: (r as any).file_id,
-      score: 1 - (r as any)._distance,
-      metadata: typeof (r as any).metadata === 'string' ? JSON.parse((r as any).metadata) : (r as any).metadata
-    }));
+
+    // Lấy tên file mới nhất từ DB để cập nhật metadata (tránh hiển thị tên cũ nếu file bị đổi tên)
+    const uniqueFileIds = [...new Set(results.map(r => (r as any).file_id))];
+    let fileNamesMap: Record<number, string> = {};
+    
+    if (uniqueFileIds.length > 0) {
+      try {
+        const { rows } = await db.query(
+          "SELECT id, file_name FROM knowledge_files WHERE id = ANY($1)", 
+          [uniqueFileIds]
+        );
+        rows.forEach(r => { fileNamesMap[r.id] = r.file_name; });
+      } catch (dbErr) {
+        console.error("[RAG-Search] Failed to fetch current filenames:", dbErr);
+      }
+    }
+
+    const formattedResults = results.map(r => {
+      const file_id = (r as any).file_id;
+      const metadata = typeof (r as any).metadata === 'string' ? JSON.parse((r as any).metadata) : (r as any).metadata;
+      
+      // Ghi đè tên file từ DB nếu tìm thấy
+      if (fileNamesMap[file_id]) {
+        metadata.source = fileNamesMap[file_id];
+      }
+
+      return {
+        text: (r as any).text,
+        file_id: file_id,
+        score: 1 - (r as any)._distance,
+        metadata: metadata
+      };
+    });
 
     res.json({ results: formattedResults });
   } catch (error: any) {
@@ -210,9 +241,29 @@ function getMimeType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".pdf") return "application/pdf";
   if (ext === ".docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (ext === ".doc") return "application/msword";
   if (ext === ".txt") return "text/plain";
   if (ext === ".html") return "text/html";
   return "text/plain";
+}
+
+/**
+ * Trích xuất tất cả URL ảnh từ markdown chunk vào mảng riêng,
+ * đồng thời xóa tag ![...](url) khỏi text để LLM không bị nhiễu.
+ */
+function extractAndStripImages(text: string): { cleanText: string; images: string[] } {
+  const images: string[] = [];
+  // Regex hỗ trợ cả dấu gạch chéo ngược (Windows) và xuôi, và bắt đầu bằng /group_ hoặc group_
+  const IMAGE_REGEX = /!\[.*?\]\((?:\.?\/)?(group_[^\s)]+)\)/g;
+  
+  const cleanText = text.replace(IMAGE_REGEX, (match, url) => {
+    // Đảm bảo URL bắt đầu bằng / để thống nhất
+    const normalizedUrl = url.startsWith('/') ? url : '/' + url;
+    images.push(normalizedUrl.replace(/\\/g, '/'));
+    return ""; // Xóa khỏi text
+  }).replace(/\n{3,}/g, "\n\n").trim();
+  
+  return { cleanText, images };
 }
 
 export default { processRagFile, searchRag, syncRag, deleteFileRag };

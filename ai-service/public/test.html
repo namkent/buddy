@@ -126,14 +126,23 @@
             const text = document.getElementById('tts-text').value;
             const audio = document.getElementById('tts-audio');
             const loader = document.getElementById('tts-loader');
+            if (!text) return alert('Hãy nhập văn bản');
             loader.style.display = 'block';
             try {
-                const blob = await apiCall('/v1/tts', { text });
-                const url = URL.createObjectURL(blob);
-                audio.src = url;
-                audio.style.display = 'block';
-                audio.play();
-            } finally { loader.style.display = 'none'; }
+                const res = await apiCall('/v1/tts', { text });
+                if (res instanceof Blob) {
+                    const url = URL.createObjectURL(res);
+                    audio.src = url;
+                    audio.style.display = 'block';
+                    audio.play();
+                } else {
+                    alert('Lỗi TTS: ' + (res.error || JSON.stringify(res)));
+                }
+            } catch (err) {
+                alert('Lỗi kết nối: ' + err.message);
+            } finally { 
+                loader.style.display = 'none'; 
+            }
         }
 
         async function testProcessFile() {

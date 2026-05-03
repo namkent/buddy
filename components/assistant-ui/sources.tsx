@@ -38,8 +38,8 @@ const sourceVariants = cva(
       },
       size: {
         sm: "px-2 py-0.5 text-[10px] gap-1",
-        default: "px-2.5 py-0.5 text-xs gap-1.5",
-        lg: "px-3 py-1 text-sm gap-2",
+        default: "px-3 py-1 text-[11px] gap-2",
+        lg: "px-4 py-1.5 text-sm gap-2.5",
       },
     },
     defaultVariants: {
@@ -126,7 +126,7 @@ function SourceTitle({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       data-slot="source-title"
-      className={cn("max-w-[12rem] truncate md:max-w-[20rem]", className)}
+      className={cn("max-w-[18rem] truncate md:max-w-[30rem]", className)}
       {...props}
     />
   );

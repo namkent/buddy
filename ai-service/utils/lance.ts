@@ -2,19 +2,23 @@ import * as lancedb from "@lancedb/lancedb";
 import path from "path";
 import fs from "fs";
 
-// Ưu tiên sử dụng STORAGE_DIR từ .env, nếu không có mới dùng folder local
-const storageBase = process.env.STORAGE_DIR || path.join(process.cwd(), "storage");
-export const DB_PATH = path.join(storageBase, "vector_db");
-
-
-// Đảm bảo thư mục tồn tại
-if (!fs.existsSync(DB_PATH)) {
-  fs.mkdirSync(DB_PATH, { recursive: true });
+// Chuyển DB_PATH thành function/getter để đảm bảo lấy đúng env var khi runtime
+export function getDbPath(): string {
+  const storageBase = process.env.STORAGE_DIR || path.join(process.cwd(), "storage");
+  return path.join(storageBase, "vector_db");
 }
 
 let dbInstance: lancedb.Connection | null = null;
 
 export async function getDb(): Promise<lancedb.Connection> {
+  const DB_PATH = getDbPath();
+  
+  // Đảm bảo thư mục tồn tại
+  if (!fs.existsSync(DB_PATH)) {
+    console.log(`\x1b[35m[LANCE]\x1b[0m Creating vector DB directory: ${DB_PATH}`);
+    fs.mkdirSync(DB_PATH, { recursive: true });
+  }
+
   if (!dbInstance) {
     dbInstance = await lancedb.connect(DB_PATH);
   }
@@ -35,5 +39,5 @@ export async function getTable(tableName: string = "knowledge_chunks"): Promise<
 export default {
   getDb,
   getTable,
-  DB_PATH
+  getDbPath
 };

@@ -49,7 +49,8 @@ async function downloadAll() {
     }
   }
 
-  console.log("\x1b[32m[AI-SERVICE]\x1b[0m Done! All Vietnamese models are ready in storage/models.");
+  const storageBase = process.env.STORAGE_DIR || "storage";
+  console.log(`\x1b[32m[AI-SERVICE]\x1b[0m Done! All models are ready in ${storageBase}/models.`);
   process.exit(0);
 }
 

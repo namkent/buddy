@@ -15,6 +15,7 @@ export interface AuthenticatedUser {
   avatar?: string;
   role: string;
   is_banned: boolean;
+  lang: string;
 }
 
 /**

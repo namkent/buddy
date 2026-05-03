@@ -292,16 +292,20 @@ const defaultComponents = memoizeMarkdownComponents({
   },
   img: ({ className, src, alt, ...props }) => {
     if (!src || typeof src !== "string") return null;
-    // Nếu là đường dẫn nội bộ từ RAG (bắt đầu bằng /group_)
-    const fullSrc = src.startsWith("/group_")
-      ? `${process.env.NEXT_PUBLIC_FILE_SERVER_URL}${src}`
-      : src;
+    
+    let fullSrc = src;
+    // Nếu là đường dẫn tương đối từ RAG (bắt đầu bằng /group_)
+    if (src.startsWith("/group_")) {
+      fullSrc = `${process.env.NEXT_PUBLIC_FILE_SERVER_URL || "/api/files"}${src}`;
+    }
+    // Nếu là đường dẫn tương đối bắt đầu bằng /api/files (đã có prefix)
+    // hoặc URL tuyệt đối http(s)://... thì giữ nguyên
 
     return (
       <img
         src={fullSrc}
         alt={alt ?? "image"}
-        className={cn("aui-md-img my-2.5 max-w-full", className)}
+        className={cn("aui-md-img my-2.5 max-w-full rounded-lg", className)}
         {...props}
       />
     );

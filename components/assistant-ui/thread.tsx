@@ -251,7 +251,7 @@ const Composer: FC = () => {
 
   useEffect(() => {
     if (chatMode === "search") {
-      fetch("/api/knowledge/groups")
+      fetch("/api/knowledge/groups?activeOnly=true")
         .then(r => r.json())
         .then(d => {
           if (d.groups) {
@@ -538,7 +538,7 @@ const AssistantMessage: FC = () => {
             if (part.type === "text") return <MarkdownText />;
             if (part.type === "reasoning") return <Reasoning {...part} />;
             if (part.type === "source") return (
-              <div className="inline-flex gap-2 mr-2 mb-2 mt-1">
+              <div className="inline-flex gap-2.5 mr-2.5 mb-2.5 mt-1.5">
                 <Sources {...part} />
               </div>
             );

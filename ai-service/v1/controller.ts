@@ -1,7 +1,10 @@
+import "dotenv/config";
 import { Request, Response } from 'express';
 import AIEngines from "../utils/engines";
 import { parseFile } from "../utils/parser";
 import { splitText } from "../utils/textSplitter";
+import path from "path";
+import fs from "fs";
 import { WaveFile } from "wavefile";
 
 /**
@@ -19,7 +22,7 @@ export const getEmbeddings = async (req: Request, res: Response) => {
   if (!text) return res.status(400).json({ error: "Text is required" });
 
   try {
-    const model = process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+    const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
     const pipeline = await AIEngines.getPipeline("feature-extraction", model);
     
     const output = await pipeline(Array.isArray(text) ? text : [text], {
@@ -95,9 +98,10 @@ export const tts = async (req: Request, res: Response) => {
   if (!text) return res.status(400).json({ error: "Text is required" });
 
   try {
-    const model = process.env.TTS_MODEL || "Xenova/vits-ljs";
-    const pipeline = await AIEngines.getPipeline("text-to-audio", model);
+    const model = process.env.TTS_MODEL || "Xenova/mms-tts-vie";
+    console.log(`\x1b[36m[TTS]\x1b[0m Generating speech using model: ${model}`);
     
+    const pipeline = await AIEngines.getPipeline("text-to-audio", model);
     const output = await pipeline(text);
     
     const wav = new WaveFile();
@@ -106,6 +110,7 @@ export const tts = async (req: Request, res: Response) => {
     res.set("Content-Type", "audio/wav");
     res.send(Buffer.from(wav.toBuffer() as any));
   } catch (error: any) {
+    console.error(`\x1b[31m[TTS-ERROR]\x1b[0m`, error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -121,7 +126,7 @@ export const processFile = async (req: Request, res: Response) => {
     const rawText = await parseFile(req.file.path, req.file.mimetype);
     const chunks = await splitText(rawText);
     
-    const model = process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+    const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
     const pipeline = await AIEngines.getPipeline("feature-extraction", model);
     
     const output = await pipeline(chunks, {

@@ -3,7 +3,10 @@ import fs from "fs";
 
 class AIEngines {
   static #pipelines: Record<string, any> = {};
-  static #cacheDir = path.resolve(process.env.STORAGE_DIR || "storage", "models");
+  static get #cacheDir() {
+    const storageBase = process.env.STORAGE_DIR || path.join(process.cwd(), "storage");
+    return path.resolve(storageBase, "models");
+  }
   static #fallbackHost = "https://cdn.anythingllm.com/support/models/";
 
   static async getPipeline(task: string, model: string): Promise<any> {

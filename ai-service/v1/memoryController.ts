@@ -33,7 +33,7 @@ export const addMemory = async (req: Request, res: Response) => {
       const facts = await extractFactsFromMessage(text);
       if (facts.length === 0) return;
 
-      const model = process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+      const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
       const pipeline = await AIEngines.getPipeline("feature-extraction", model);
       const lancedb = await lance.getDb();
 
@@ -127,7 +127,7 @@ export const searchMemory = async (req: Request, res: Response) => {
   }
 
   try {
-    const model = process.env.EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+    const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
     const pipeline = await AIEngines.getPipeline("feature-extraction", model);
     const output = await pipeline([query], { pooling: "mean", normalize: true });
     const vector = output.tolist()[0];

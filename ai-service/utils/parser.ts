@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import mammoth from "mammoth";
+import WordExtractor from "word-extractor";
 import { v4 as uuidv4 } from "uuid";
 import TurndownService from "turndown";
 import { exec } from "child_process";
@@ -11,16 +12,58 @@ import { promisify } from "util";
 
 const execPromise = promisify(exec);
 
+const STORAGE_ROOT = process.env.EXTERNAL_STORAGE_PATH || 
+                     (process.env.STORAGE_DIR ? path.join(process.env.STORAGE_DIR, "datas") : path.join(process.cwd(), "..", "external_storage"));
+
+console.log(`\x1b[34m[PARSER]\x1b[0m Storage Root: ${STORAGE_ROOT}`);
 
 const turndownService = new TurndownService({
   headingStyle: 'atx',
   codeBlockStyle: 'fenced'
 });
 
-const STORAGE_ROOT = process.env.EXTERNAL_STORAGE_PATH || 
-                     (process.env.STORAGE_DIR ? path.join(process.env.STORAGE_DIR, "datas") : path.join(process.cwd(), "..", "external_storage"));
+/**
+ * Chuyển đổi file sang PDF sử dụng LibreOffice
+ */
+export async function convertToPdf(inputPath: string, outputDir: string): Promise<string> {
+  const sofficePath = process.env.LIBREOFFICE_PATH || "soffice";
+  console.log(`\x1b[35m[CONVERTER]\x1b[0m Using soffice path: ${sofficePath}`);
+  const filename = path.basename(inputPath, path.extname(inputPath)) + ".pdf";
+  const pdfPath = path.join(outputDir, filename);
 
-console.log(`\x1b[34m[PARSER]\x1b[0m Storage Root: ${STORAGE_ROOT}`);
+  // Nếu đã có bản PDF rồi thì không cần convert lại
+  if (fs.existsSync(pdfPath)) {
+    console.log(`\x1b[35m[CONVERTER]\x1b[0m PDF already exists: ${pdfPath}`);
+    return pdfPath;
+  }
+
+  try {
+    console.log(`\x1b[35m[CONVERTER]\x1b[0m Converting to PDF: ${inputPath}`);
+    
+    // Trên Windows, đôi khi LibreOffice cần chỉ định UserInstallation khi chạy từ service/background
+    // Tạo một profile tạm trong thư mục storage
+    const profilePath = path.join(STORAGE_ROOT, ".libreoffice_profile").replace(/\\/g, "/");
+    const userProfileArg = `-env:UserInstallation=file:///${profilePath}`;
+    
+    // soffice --headless --convert-to pdf --outdir [outputDir] [inputPath]
+    const cmd = `"${sofficePath}" ${userProfileArg} --headless --convert-to pdf --outdir "${outputDir}" "${inputPath}"`;
+    
+    console.log(`\x1b[35m[CONVERTER]\x1b[0m Executing command: ${cmd}`);
+    await execPromise(cmd);
+    
+    if (fs.existsSync(pdfPath)) {
+      console.log(`\x1b[32m[CONVERTER]\x1b[0m Successfully created PDF: ${pdfPath}`);
+      return pdfPath;
+    } else {
+      throw new Error("PDF file not found after conversion");
+    }
+  } catch (err) {
+    console.error(`\x1b[31m[CONVERTER]\x1b[0m Failed to convert to PDF:`, err);
+    throw err;
+  }
+}
+
+
 
 /**
  * Trích xuất văn bản và xử lý ảnh từ file (PDF, Docx, Txt, HTML)
@@ -77,7 +120,14 @@ export async function parseFile(filePath: string, mimeType: string, fileId: numb
   } 
   
   if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-    // Mammoth convert to HTML và trích xuất ảnh
+    // 1. Chuyển đổi sang PDF để phục vụ hiển thị (Background)
+    try {
+      await convertToPdf(absolutePath, path.dirname(absolutePath));
+    } catch (err) {
+      console.warn(`[PARSER] PDF conversion failed for docx: ${err.message}`);
+    }
+
+    // 2. Mammoth convert to HTML và trích xuất ảnh phục vụ RAG
     const options = {
       convertImage: mammoth.images.inline(async (element: any) => {
         const imageBuffer = await element.read();
@@ -104,6 +154,22 @@ export async function parseFile(filePath: string, mimeType: string, fileId: numb
     const markdown = turndownService.turndown(result.value);
     console.log(`\x1b[32m[PARSER]\x1b[0m Processed Docx to Markdown (${markdown.length} chars)`);
     return markdown;
+  }
+
+  if (mimeType === "application/msword") {
+    // 1. Chuyển đổi sang PDF để phục vụ hiển thị (Background)
+    try {
+      await convertToPdf(absolutePath, path.dirname(absolutePath));
+    } catch (err) {
+      console.warn(`[PARSER] PDF conversion failed for doc: ${err.message}`);
+    }
+
+    // 2. Trích xuất text phục vụ RAG
+    const extractor = new WordExtractor();
+    const extracted = await extractor.extract(absolutePath);
+    const text = extracted.getBody();
+    console.log(`\x1b[32m[PARSER]\x1b[0m Processed Doc to Text (${text.length} chars)`);
+    return text;
   }
 
   if (mimeType === "text/plain") {

@@ -5,7 +5,6 @@ import { Loader2, X, Download, FileText, FileCode, FileArchive, Maximize2, Exter
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import mammoth from "mammoth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { AssistantRuntimeProvider, useLocalRuntime, TextMessagePartProvider, MessageProvider } from "@assistant-ui/react";
@@ -119,7 +118,7 @@ interface DocumentViewerProps {
 export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState<string | null>(null);
-  const [type, setType] = useState<"html" | "pdf" | "docx" | "txt" | "unknown">("unknown");
+  const [type, setType] = useState<"html" | "pdf" | "docx" | "doc" | "txt" | "unknown">("unknown");
   const [error, setError] = useState<string | null>(null);
   const [markdownContent, setMarkdownContent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("original");
@@ -127,11 +126,10 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
   useEffect(() => {
     if (isOpen && file) {
       const ext = file.file_name.split('.').pop()?.toLowerCase();
-      // Nếu là PDF thì ưu tiên xem bản gốc (nhúng PDF)
-      if (ext === "pdf") {
+      // Nếu là PDF hoặc Word (đã được convert sang PDF) thì ưu tiên xem bản PDF
+      if (ext === "pdf" || ext === "docx" || ext === "doc") {
         setActiveTab("original");
       } else {
-        // Các loại khác thì chờ load Markdown xem có không, mặc định tạm thời là original
         setActiveTab("original");
       }
       
@@ -154,15 +152,8 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
     const url = `/api/files${file.file_path}`;
 
     try {
-      if (ext === "pdf" || ext === "html" || ext === "htm") {
-        setType(ext === "pdf" ? "pdf" : "html");
-        setLoading(false);
-      } else if (ext === "docx") {
-        setType("docx");
-        const response = await fetch(url);
-        const arrayBuffer = await response.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        setContent(result.value);
+      if (ext === "pdf" || ext === "docx" || ext === "doc" || ext === "html" || ext === "htm") {
+        setType(ext === "html" || ext === "htm" ? "html" : "pdf");
         setLoading(false);
       } else if (ext === "txt") {
         setType("txt");
@@ -339,17 +330,10 @@ export default function DocumentViewer({ isOpen, onClose, file }: DocumentViewer
                         type === "html" && "max-w-4xl bg-white dark:bg-zinc-950 shadow-lg border-x min-h-full"
                       )}>
                         <iframe
-                          src={`/api/files${file.file_path}${file.page ? `#page=${String(file.page).split(',')[0].trim()}` : "#toolbar=0"}`}
+                          src={`/api/files${type === "pdf" ? file.file_path.replace(/\.[^/.]+$/, ".pdf") : file.file_path}${file.page ? `#page=${String(file.page).split(',')[0].trim()}` : "#toolbar=0"}`}
                           className="w-full h-full border-none"
                           title={file.file_name}
                           onLoad={handleIframeLoad}
-                        />
-                      </div>
-                    ) : type === "docx" ? (
-                      <div className="h-full overflow-auto bg-white dark:bg-zinc-950 p-8 md:p-12 font-sans">
-                        <div
-                          className="prose prose-sm md:prose-base dark:prose-invert max-w-4xl mx-auto shadow-sm p-4 md:p-8 border rounded-lg bg-white dark:bg-zinc-900/50"
-                          dangerouslySetInnerHTML={{ __html: content || "" }}
                         />
                       </div>
                     ) : type === "txt" ? (

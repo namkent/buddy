@@ -22,23 +22,45 @@ export async function GET(
     // Xử lý giải mã path nếu client gửi dưới dạng obfuscated (mã hóa Base64)
     if (pathSegments[0] === 'encoded' && pathSegments[1]) {
       try {
-        const decodedStr = decodeURIComponent(Buffer.from(pathSegments[1], 'base64').toString('utf8'));
-        // Chia lại thành mảng pathSegments
+        let decodedStr = decodeURIComponent(Buffer.from(pathSegments[1], 'base64').toString('utf8'));
+        
+        // Chuẩn hóa dấu gạch chéo cho Windows/Linux
+        decodedStr = decodedStr.replace(/\\/g, '/');
+        
+        // Lấy đường dẫn gốc (Root) của storage
+        const storageRootRaw = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
+        const storageRoot = path.normalize(storageRootRaw).replace(/\\/g, '/');
+
+        // Nếu đường dẫn đã là tuyệt đối và chứa storageRoot, hãy lấy phần tương đối
+        if (decodedStr.includes(storageRoot)) {
+          decodedStr = decodedStr.substring(decodedStr.indexOf(storageRoot) + storageRoot.length);
+        } else if (path.isAbsolute(decodedStr)) {
+          // Nếu là đường dẫn tuyệt đối khác, cố gắng trích xuất phần sau group_ hoặc file_
+          const match = decodedStr.match(/\/(group_\d+\/file_\d+\/.*)/);
+          if (match) decodedStr = match[1];
+        }
+
+        // Chia lại thành mảng pathSegments an toàn
         pathSegments = decodedStr.split('/').filter(Boolean);
       } catch (err) {
         return errorResponse("Đường dẫn không hợp lệ", 400);
       }
     }
     
-    // 2. Lấy đường dẫn gốc (Root) của storage từ biến môi trường
-    const storageRoot = process.env.EXTERNAL_STORAGE_PATH || path.join(/*turbopackIgnore: true*/ process.cwd(), 'external_storage');
+    // 2. Lấy đường dẫn gốc (Root) của storage
+    const storageRootRaw = process.env.EXTERNAL_STORAGE_PATH || path.join(process.cwd(), 'external_storage');
+    const storageRoot = path.normalize(storageRootRaw);
     
     // 3. Xây dựng đường dẫn vật lý an toàn và chuẩn hóa
-    const relativePath = path.join(/*turbopackIgnore: true*/ ...pathSegments);
-    const safePhysicalPath = path.normalize(path.join(/*turbopackIgnore: true*/ storageRoot, relativePath));
+    const relativePath = path.join(...pathSegments);
+    const safePhysicalPath = path.normalize(path.join(storageRoot, relativePath));
 
     // 4. Bảo mật: Chống tấn công Directory Traversal (Đảm bảo file nằm trong thư mục gốc cho phép)
-    if (!safePhysicalPath.startsWith(path.normalize(storageRoot))) {
+    // Trên Windows, so sánh không phân biệt hoa thường và chuẩn hóa cả 2
+    const normalizedSafePath = safePhysicalPath.toLowerCase().replace(/\\/g, '/');
+    const normalizedStorageRoot = storageRoot.toLowerCase().replace(/\\/g, '/');
+
+    if (!normalizedSafePath.startsWith(normalizedStorageRoot)) {
       return errorResponse("Bạn không có quyền truy cập vào thư mục này", 403);
     }
 

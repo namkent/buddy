@@ -1,6 +1,4 @@
-import dotenv from "dotenv";
-dotenv.config();
-
+import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import logger from "./utils/logger";
@@ -22,6 +20,9 @@ import v1Routes from "./v1/routes";
 // However, to be safe:
 const app = express();
 const PORT = process.env.PORT || 3005;
+
+console.log(`\x1b[35m[AI-SERVICE]\x1b[0m Using TTS Model: ${process.env.TTS_MODEL || "default"}`);
+console.log(`\x1b[35m[AI-SERVICE]\x1b[0m Storage Root: ${process.env.STORAGE_DIR || "storage"}`);
 
 // Middleware
 app.use(cors());

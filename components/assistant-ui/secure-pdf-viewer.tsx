@@ -32,22 +32,49 @@ const Thumbnail = ({
   onClick: (no: number) => void;
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<pdfjs.RenderTask | null>(null);
 
   useEffect(() => {
     const renderThumb = async () => {
-      const page = await pdf.getPage(pageNo);
-      const viewport = page.getViewport({ scale: 0.2 });
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+      try {
+        const page = await pdf.getPage(pageNo);
+        const viewport = page.getViewport({ scale: 0.2 });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
 
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      const context = canvas.getContext("2d");
-      if (!context) return;
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        const context = canvas.getContext("2d");
+        if (!context) return;
 
-      await page.render({ canvasContext: context, viewport }).promise;
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch (e) { }
+        }
+
+        const renderTask = page.render({ canvasContext: context, viewport });
+        renderTaskRef.current = renderTask;
+
+        try {
+          await renderTask.promise;
+        } catch (err: any) {
+          if (err.name === 'RenderingCancelledException') return;
+          throw err;
+        }
+      } catch (err) {
+        // Ignore errors from cancelled rendering or strict mode unmounts
+      }
     };
     renderThumb();
+
+    return () => {
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) { }
+      }
+    };
   }, [pdf, pageNo]);
 
   return (
@@ -118,16 +145,166 @@ const OutlineItem = ({
   );
 };
 
+// Component phụ để render từng trang Full Size (Continuous Scroll)
+const PdfPage = ({
+  pdf,
+  pageNo,
+  scale,
+  searchTerm,
+  watermarkText,
+  onVisible,
+  currentResultGlobalIndex,
+  searchResults
+}: {
+  pdf: pdfjs.PDFDocumentProxy;
+  pageNo: number;
+  scale: number;
+  searchTerm: string;
+  watermarkText: string;
+  onVisible: (no: number) => void;
+  currentResultGlobalIndex: number;
+  searchResults: { pageNo: number; item: any }[];
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const renderTaskRef = useRef<pdfjs.RenderTask | null>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onVisible(pageNo);
+        }
+      },
+      { threshold: 0.5 }
+    );
+
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [pageNo, onVisible]);
+
+  useEffect(() => {
+    const render = async () => {
+      try {
+        const page = await pdf.getPage(pageNo);
+        const viewport = page.getViewport({ scale });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+
+        if (renderTaskRef.current) {
+          try { renderTaskRef.current.cancel(); } catch (e) { }
+        }
+
+        const renderTask = page.render({ canvasContext: context, viewport });
+        renderTaskRef.current = renderTask;
+
+        await renderTask.promise;
+
+        // Vẽ Highlight tìm kiếm (Độ chính xác cao)
+        if (searchTerm && searchTerm.length >= 2) {
+          const textContent = await page.getTextContent();
+          context.save();
+          
+          // Tính toán index bắt đầu của trang này trong kết quả tìm kiếm tổng thể
+          let currentGlobalMatchIdx = searchResults.findIndex(r => r.pageNo === pageNo);
+          
+          textContent.items.forEach((item: any) => {
+            const str = item.str || "";
+            const searchLower = searchTerm.toLowerCase();
+            const strLower = str.toLowerCase();
+            
+            if (str && strLower.includes(searchLower)) {
+              const [fontHeight, xRotation, yRotation, fontWidth, x, y] = item.transform;
+              
+              // Tìm tất cả các lần xuất hiện của từ khóa trong item này
+              let startIndex = strLower.indexOf(searchLower);
+              while (startIndex !== -1) {
+                // Xác định màu sắc (Cam cho kết quả hiện tại, Vàng cho các kết quả khác)
+                const isActive = currentGlobalMatchIdx === currentResultGlobalIndex;
+                context.fillStyle = isActive ? "rgba(255, 165, 0, 0.6)" : "rgba(255, 255, 0, 0.4)";
+
+                const totalWidth = item.width * scale;
+                const startRatio = startIndex / str.length;
+                const widthRatio = searchTerm.length / str.length;
+                
+                const [canvasX, canvasY] = viewport.convertToViewportPoint(x, y);
+                const highlightX = canvasX + (totalWidth * startRatio);
+                const highlightWidth = totalWidth * widthRatio;
+                
+                const paddingY = 2 * scale;
+                context.fillRect(
+                  highlightX - (1 * scale),
+                  canvasY - (item.height * scale) - paddingY/2,
+                  highlightWidth + (2 * scale),
+                  (item.height * scale) + paddingY
+                );
+
+                startIndex = strLower.indexOf(searchLower, startIndex + 1);
+                currentGlobalMatchIdx++;
+              }
+            }
+          });
+          context.restore();
+        }
+
+        // Vẽ Watermark
+        drawWatermark(context, canvas.width, canvas.height, watermarkText);
+      } catch (err: any) {
+        if (err.name !== 'RenderingCancelledException') console.error(err);
+      }
+    };
+
+    render();
+    return () => {
+      if (renderTaskRef.current) {
+        try { renderTaskRef.current.cancel(); } catch (e) { }
+      }
+    };
+  }, [pdf, pageNo, scale, searchTerm, watermarkText, currentResultGlobalIndex, searchResults]);
+
+  const drawWatermark = (ctx: CanvasRenderingContext2D, width: number, height: number, text: string) => {
+    ctx.save();
+    ctx.font = "bold 20px Arial";
+    ctx.fillStyle = "rgba(150, 150, 150, 0.12)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const stepX = 350;
+    const stepY = 100;
+    for (let x = 0; x < width + stepX; x += stepX) {
+      for (let y = 0; y < height + stepY; y += stepY) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-Math.PI / 6);
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  };
+
+  return (
+    <div ref={containerRef} id={`pdf-page-${pageNo}`} className="mb-8 relative shadow-2xl shadow-black/20 border dark:border-white/10 bg-white">
+      <canvas ref={canvasRef} className="max-w-full h-auto block" />
+    </div>
+  );
+};
+
 export default function SecurePdfViewer({
   url,
   initialPage = 1,
   watermarkText = "MES ASSISTANT - CONFIDENTIAL"
 }: SecurePdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<pdfjs.RenderTask | null>(null);
   const [pdf, setPdf] = useState<pdfjs.PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(initialPage);
   const [numPages, setNumPages] = useState(0);
-  const [scale, setScale] = useState(1.5);
+  const [scale, setScale] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -158,6 +335,11 @@ export default function SecurePdfViewer({
           if (pdfOutline && pdfOutline.length > 0) setSidebarTab("outline");
 
           setLoading(false);
+
+          // Nếu có trang bắt đầu, cuộn đến đó sau khi load xong
+          if (initialPage > 1) {
+            setTimeout(() => scrollToPage(initialPage), 500);
+          }
         }
       } catch (err: any) {
         console.error("Error loading PDF via PDF.js:", err);
@@ -171,6 +353,13 @@ export default function SecurePdfViewer({
     loadPdf();
     return () => { isMounted = false; };
   }, [url]);
+
+  const scrollToPage = (pageNo: number) => {
+    const pageElement = document.getElementById(`pdf-page-${pageNo}`);
+    if (pageElement) {
+      pageElement.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   // Hàm thực hiện tìm kiếm
   const handleSearch = async (term: string) => {
@@ -189,15 +378,24 @@ export default function SecurePdfViewer({
         const textContent = await page.getTextContent();
 
         textContent.items.forEach((item: any) => {
-          if (item.str && item.str.toLowerCase().includes(term.toLowerCase())) {
-            results.push({ pageNo: i, item });
+          const str = item.str || "";
+          const strLower = str.toLowerCase();
+          const searchLower = term.toLowerCase();
+          
+          if (str && strLower.includes(searchLower)) {
+            // Tìm tất cả các lần xuất hiện trong item này để khớp với logic vẽ
+            let idx = strLower.indexOf(searchLower);
+            while (idx !== -1) {
+              results.push({ pageNo: i, item });
+              idx = strLower.indexOf(searchLower, idx + 1);
+            }
           }
         });
       }
       setSearchResults(results);
       if (results.length > 0) {
         setCurrentResultIndex(0);
-        setPageNum(results[0].pageNo);
+        scrollToPage(results[0].pageNo);
       } else {
         setCurrentResultIndex(-1);
       }
@@ -218,7 +416,7 @@ export default function SecurePdfViewer({
       }
       if (Array.isArray(pageRef)) {
         const pageIndex = await pdf.getPageIndex(pageRef[0]);
-        setPageNum(pageIndex + 1);
+        scrollToPage(pageIndex + 1);
       }
     } catch (err) {
       console.warn("Failed to navigate to outline destination", err);
@@ -229,93 +427,15 @@ export default function SecurePdfViewer({
     if (searchResults.length === 0) return;
     const nextIndex = (currentResultIndex + 1) % searchResults.length;
     setCurrentResultIndex(nextIndex);
-    setPageNum(searchResults[nextIndex].pageNo);
+    scrollToPage(searchResults[nextIndex].pageNo);
   };
 
   const prevSearchResult = () => {
     if (searchResults.length === 0) return;
     const prevIndex = (currentResultIndex - 1 + searchResults.length) % searchResults.length;
     setCurrentResultIndex(prevIndex);
-    setPageNum(searchResults[prevIndex].pageNo);
+    scrollToPage(searchResults[prevIndex].pageNo);
   };
-
-  // Render Page
-  const renderPage = useCallback(async (pdfDoc: pdfjs.PDFDocumentProxy, pageNo: number, currentScale: number) => {
-    if (!canvasRef.current) return;
-
-    try {
-      const page = await pdfDoc.getPage(pageNo);
-      const viewport = page.getViewport({ scale: currentScale });
-      const canvas = canvasRef.current;
-      const context = canvas.getContext("2d");
-
-      if (!context) return;
-
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-
-      await page.render({ canvasContext: context, viewport }).promise;
-
-      // 1. Vẽ Highlight tìm kiếm (nếu có)
-      if (searchTerm && searchTerm.length >= 2) {
-        const textContent = await page.getTextContent();
-        context.save();
-        context.fillStyle = "rgba(255, 255, 0, 0.4)"; // Màu vàng highlight
-
-        textContent.items.forEach((item: any) => {
-          if (item.str && item.str.toLowerCase().includes(searchTerm.toLowerCase())) {
-            const [fontHeight, xRotation, yRotation, fontWidth, x, y] = item.transform;
-
-            // Chuyển đổi tọa độ từ PDF sang Canvas
-            const [canvasX, canvasY] = viewport.convertToViewportPoint(x, y);
-            const [width, height] = viewport.convertToViewportPoint(x + item.width, y + item.height);
-
-            // Vẽ hình chữ nhật highlight
-            // Lưu ý: PDF dùng hệ tọa độ gốc ở dưới, Canvas dùng ở trên
-            context.fillRect(
-              canvasX,
-              canvasY - (item.height * currentScale),
-              item.width * currentScale,
-              item.height * currentScale
-            );
-          }
-        });
-        context.restore();
-      }
-
-      // 2. Vẽ Watermark
-      drawWatermark(context, canvas.width, canvas.height);
-
-    } catch (err) {
-      console.error("Error rendering page:", err);
-    }
-  }, [watermarkText, searchTerm]);
-
-  const drawWatermark = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    ctx.save();
-    ctx.font = "bold 20px Arial";
-    ctx.fillStyle = "rgba(150, 150, 150, 0.12)";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    // Tăng khoảng cách (step) để chữ không bị lồng lên nhau
-    const stepX = 350;
-    const stepY = 100;
-    for (let x = 0; x < width + stepX; x += stepX) {
-      for (let y = 0; y < height + stepY; y += stepY) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(-Math.PI / 6); // Giảm góc xoay một chút cho dễ nhìn
-        ctx.fillText(watermarkText, 0, 0);
-        ctx.restore();
-      }
-    }
-    ctx.restore();
-  };
-
-  useEffect(() => {
-    if (pdf) renderPage(pdf, pageNum, scale);
-  }, [pdf, pageNum, scale, renderPage]);
 
   const handleContextMenu = (e: React.MouseEvent) => e.preventDefault();
 
@@ -352,7 +472,7 @@ export default function SecurePdfViewer({
             <input
               type="text"
               placeholder="Tìm trong tài liệu..."
-              className="h-8 w-40 md:w-56 pl-8 pr-16 bg-zinc-100 dark:bg-zinc-800 border-none rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
+              className="h-8 w-48 md:w-80 pl-8 pr-16 bg-zinc-100 dark:bg-zinc-800 border-none rounded-lg text-sm focus:ring-1 focus:ring-indigo-500 transition-all outline-none"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch(searchTerm)}
@@ -380,7 +500,7 @@ export default function SecurePdfViewer({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setPageNum(p => Math.max(1, p - 1))}
+              onClick={() => scrollToPage(Math.max(1, pageNum - 1))}
               disabled={pageNum <= 1}
               className="size-8"
             >
@@ -392,7 +512,7 @@ export default function SecurePdfViewer({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setPageNum(p => Math.min(numPages, p + 1))}
+              onClick={() => scrollToPage(Math.min(numPages, pageNum + 1))}
               disabled={pageNum >= numPages}
               className="size-8"
             >
@@ -446,7 +566,7 @@ export default function SecurePdfViewer({
                       pdf={pdf}
                       pageNo={i + 1}
                       isActive={pageNum === i + 1}
-                      onClick={setPageNum}
+                      onClick={scrollToPage}
                     />
                   ))}
                 </div>
@@ -461,8 +581,8 @@ export default function SecurePdfViewer({
           </div>
         )}
 
-        {/* Main content */}
-        <div className="flex-1 overflow-auto bg-zinc-200/50 dark:bg-zinc-950/50 custom-scrollbar relative p-4 md:p-8 flex justify-center items-start">
+        {/* Main content - Continuous Scroll */}
+        <div className="flex-1 overflow-auto bg-zinc-200/50 dark:bg-zinc-950/50 custom-scrollbar relative p-4 md:p-8 flex flex-col items-center">
           {loading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-20">
               <Loader2 className="size-8 animate-spin text-indigo-500" />
@@ -470,10 +590,19 @@ export default function SecurePdfViewer({
             </div>
           )}
 
-          <div className="relative shadow-2xl shadow-black/20 border dark:border-white/10 bg-white">
-            <canvas ref={canvasRef} className="max-w-full h-auto block" />
-            <div className="absolute inset-0 z-10 pointer-events-none" />
-          </div>
+          {pdf && Array.from({ length: numPages }, (_, i) => (
+            <PdfPage
+              key={i + 1}
+              pdf={pdf}
+              pageNo={i + 1}
+              scale={scale}
+              searchTerm={searchTerm}
+              watermarkText={watermarkText}
+              onVisible={setPageNum}
+              currentResultGlobalIndex={currentResultIndex}
+              searchResults={searchResults}
+            />
+          ))}
         </div>
       </div>
 
