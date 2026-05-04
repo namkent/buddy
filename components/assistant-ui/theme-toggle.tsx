@@ -22,9 +22,9 @@ export function ThemeToggle() {
     >
       {mounted ? (
         resolvedTheme === "dark" ? (
-          <Moon className="size-4" />
+          <Moon className="size-4" strokeWidth={1.5} />
         ) : (
-          <Sun className="size-4" />
+          <Sun className="size-4" strokeWidth={1.5} />
         )
       ) : (
         <div className="size-4" />

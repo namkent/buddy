@@ -66,7 +66,7 @@ export const dbConnection = {
         UNIQUE(type, key)
       );
     `);
-    
+
     // Create or migrate Admin account with hashed password
     const userAdmin = await pool.query("SELECT password_hash FROM users WHERE email = 'admin@mes.local'");
     if (userAdmin.rowCount === 0) {
@@ -161,7 +161,7 @@ export const dbConnection = {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    
+
     // Seed default settings if they don't exist
     await pool.query(`
       INSERT INTO system_settings (key, value, description) VALUES
@@ -170,12 +170,11 @@ export const dbConnection = {
       ('SYSTEM_PROMPT', 'Bạn là trợ lý ảo MES Buddy, giúp giải quyết các công việc trong hệ thống.', 'Prompt hệ thống để định hướng phản hồi của LLM'),
       ('ENABLE_TOOL_TRANSLATE', 'true', 'Bật tính năng dịch thuật'),
       ('ENABLE_TOOL_RAG_SEARCH', 'true', 'Bật tính năng RAG Search'),
-      ('ENABLE_TOOL_SUMMARIZE', 'true', 'Bật tính năng Tóm tắt Chat'),
       ('ENABLE_TOOL_AGENTS', 'true', 'Bật tính năng Tác nhân AI (Agents)'),
       ('ENABLE_GUEST_ACCESS', 'false', 'Cho phép người dùng chưa phân quyền (Guest) được nhắn tin')
       ON CONFLICT (key) DO NOTHING;
     `);
-    
+
     // Add columns dynamically if tables already existed without altering constraints fatally
     try {
       await pool.query('ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE');
@@ -191,7 +190,7 @@ export const dbConnection = {
       await pool.query('ALTER TABLE knowledge_files ADD COLUMN IF NOT EXISTS file_size BIGINT');
       await pool.query('ALTER TABLE knowledge_groups ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT DEFAULT \'en\'');
-    } catch(e) {}
+    } catch (e) { }
   },
 
   users: {
@@ -586,7 +585,7 @@ export const dbConnection = {
       if (filters.level) { where.push(`level = $${i++}`); values.push(filters.level); }
       if (filters.source) { where.push(`source = $${i++}`); values.push(filters.source); }
       if (filters.user_id) { where.push(`user_id = $${i++}`); values.push(filters.user_id); }
-      
+
       const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
       const res = await pool.query(`
         SELECT l.*, u.user_name, u.email 
@@ -610,7 +609,7 @@ export const dbConnection = {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        
+
         // 1. Xóa threads không lưu trữ sau 30 ngày (Tin nhắn sẽ tự xóa nhờ ON DELETE CASCADE)
         const deletedUnarchived = await client.query(
           "DELETE FROM chat_threads WHERE archived = FALSE AND created_at < NOW() - INTERVAL '30 days'"
@@ -628,7 +627,7 @@ export const dbConnection = {
         );
 
         const summary = `Dọn dẹp hệ thống: Xóa ${deletedUnarchived.rowCount} thread thường, ${deletedArchived.rowCount} thread lưu trữ. Hạ quyền ${downgradedUsers.rowCount} người dùng.`;
-        
+
         // Ghi log hoạt động
         await client.query(
           "INSERT INTO system_logs (level, source, message) VALUES ($1, $2, $3)",
@@ -640,7 +639,7 @@ export const dbConnection = {
       } catch (error: any) {
         await client.query('ROLLBACK');
         console.error("Maintenance Error:", error);
-        
+
         // Ghi log lỗi
         await dbConnection.logs.create({
           level: 'error',
@@ -648,7 +647,7 @@ export const dbConnection = {
           message: 'Lỗi trong quá trình bảo trì định kỳ',
           details: error.message
         });
-        
+
         throw error;
       } finally {
         client.release();
@@ -677,11 +676,11 @@ export const dbConnection = {
     async upsert(data: Record<string, any>) {
       // Filter out metadata columns that shouldn't be manually inserted/updated
       const { id, created_at, updated_at, ...cleanData } = data;
-      
+
       const columns = Object.keys(cleanData);
       const values = Object.values(cleanData);
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-      
+
       const updateClause = columns
         .filter(c => c !== 'type' && c !== 'key')
         .map((c) => `${c} = EXCLUDED.${c}`)

@@ -276,19 +276,6 @@ export default function SettingsPage() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold">System Tools Toggles</h3>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Enable User Memory (Mem0)</p>
-                      <p className="text-xs text-muted-foreground">AI ghi nhớ thông tin người dùng để cá nhân hóa cuộc trò chuyện.</p>
-                    </div>
-                    <div>
-                      <Switch
-                        checked={settings.ENABLE_MEM0 !== "false"}
-                        onCheckedChange={checked => setSettings({ ...settings, ENABLE_MEM0: checked ? "true" : "false" })}
-                        className="data-[state=checked]:bg-indigo-600"
-                      />
-                    </div>
-                  </div>
 
                   <div className="flex items-center justify-between">
                     <div>

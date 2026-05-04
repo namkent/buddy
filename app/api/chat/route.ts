@@ -100,34 +100,28 @@ export async function POST(req: Request) {
     const metaGroupId = meta.groupId || (message as any).metadata?.groupId;
     const metaAgentId = meta.agentId || (message as any).metadata?.agentId;
 
-    if (enableTranslate === "true" && (metaMode === "translate" || currentTextContent.startsWith("/translate "))) {
+    if (enableTranslate === "true" && metaMode === "translate") {
       isTranslate = true;
       let targetLanguage = "Ngôn ngữ yêu cầu";
       let bodyToTranslate = currentTextContent;
 
       if (metaTargetLang) {
         targetLanguage = metaTargetLang.name;
-      } else {
-        const match = currentTextContent.match(/^(?:\/translate)\s+(.*?)\]?:\s*([\s\S]*)$/i);
-        if (match) {
-          targetLanguage = match[1];
-          bodyToTranslate = match[2];
-        }
       }
 
       // ÉP AI CHỈ DỊCH BẰNG CÁCH THAY ĐỔI CẤU TRÚC TIN NHẮN NGƯỜI DÙNG
       // Thay vì gửi "tìm thông tin...", ta gửi "Dịch sang Korean: tìm thông tin..."
-      apiMessages = [{ 
-        role: "user", 
+      apiMessages = [{
+        role: "user",
         content: `TRANSLATION_TASK: 
 Target Language: ${targetLanguage}
 Source Text: """
 ${bodyToTranslate}
 """
 
-Instruction: Translate the "Source Text" above into ${targetLanguage}. Output ONLY the translated text.` 
+Instruction: Translate the "Source Text" above into ${targetLanguage}. Output ONLY the translated text.`
       }];
-      
+
       // Prompt cực kỳ nghiêm ngặt
       resolvedSystemPrompt = `You are a professional translation engine. 
 - You MUST only output the translated text of the "Source Text" provided by the user.
@@ -155,10 +149,16 @@ Instruction: Translate the "Source Text" above into ${targetLanguage}. Output ON
       // Tích hợp thông tin User Session và Memory CHỈ khi không phải chế độ dịch
       resolvedSystemPrompt = `${userSessionInfo}\n\n${resolvedSystemPrompt}`;
 
-      // 2.1 Viết lại câu hỏi dựa trên lịch sử (Query Rewriting) để tìm kiếm chính xác hơn
-      const standaloneQuery = await generateStandaloneQuery(currentTextContent, apiMessages, selectedModel);
+      isRagSearch = metaMode === "search";
 
-      // 2.2 Tìm kiếm Memory (Dùng standaloneQuery để có kết quả liên quan nhất)
+      // 2.1 Viết lại câu hỏi dựa trên lịch sử (Query Rewriting) 
+      // TỐI ƯU: Chỉ dùng LLM viết lại câu hỏi nếu người dùng đang dùng tính năng Search (RAG) để tiết kiệm thời gian chờ (Latency).
+      let standaloneQuery = currentTextContent;
+      if (isRagSearch && enableRagSearch === "true") {
+        standaloneQuery = await generateStandaloneQuery(currentTextContent, apiMessages, selectedModel);
+      }
+
+      // 2.2 Tìm kiếm Memory (Dùng standaloneQuery nếu có RAG, không thì dùng câu gốc cho nhanh)
       if (process.env.ENABLE_MEM0 === "true") {
         try {
           const { memory } = await import("@/lib/memory");
@@ -174,7 +174,6 @@ Instruction: Translate the "Source Text" above into ${targetLanguage}. Output ON
       }
 
       // 2.3 Xử lý RAG (Nếu người dùng yêu cầu)
-      isRagSearch = metaMode === "search" || currentTextContent.startsWith("/search ") || currentTextContent.startsWith("[Search]");
       if (enableRagSearch === "true" && isRagSearch) {
         let groupId: number | undefined = metaGroupId;
         const { contextText, relevantImages, sources } = await performRAGSearch(standaloneQuery, req, groupId);
@@ -258,7 +257,7 @@ RULES:
 2. If the current question is already meaningful, keep it as is.
 3. If there are pronouns or missing context, use history to clarify.
 4. Output ONLY the rewritten query, no explanations.`,
-      messages: history.slice(0, -1).concat([
+      messages: history.slice(-6, -1).concat([
         { role: 'user', content: `Based on the history, rewrite this question into an independent query (maintain language): "${query}"` }
       ]),
     });
@@ -401,7 +400,7 @@ async function performRAGSearch(query: string, req: Request, groupId?: number) {
       const sortedPages = Array.from(g.pages).sort((a: any, b: any) => a - b);
       // Chỉ hiển thị số trang nếu có từ 2 trang khác nhau trở lên được trích dẫn
       const showPages = sortedPages.length >= 2;
-      
+
       const citationUrl = `cite:id=${g.file_id}&path=${encodeURIComponent(g.path)}&name=${encodeURIComponent(g.title)}${sortedPages.length > 0 ? `&page=${sortedPages.join(",")}` : ""}`;
 
       return {

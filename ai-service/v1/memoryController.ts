@@ -67,7 +67,7 @@ export const addMemory = async (req: Request, res: Response) => {
 
             // Nếu tương đối giống, thực hiện Hòa trộn (Consolidation)
             if (distance < 0.35) {
-              const { consolidateMemories } = await import("../utils/memoryEngine");
+              const { consolidateMemories } = await import("../utils/memoryEngine.js");
               const oldFact = bestMatch.fact || bestMatch.text;
               const { action, result } = await consolidateMemories(oldFact, item.fact);
 

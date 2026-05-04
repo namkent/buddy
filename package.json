@@ -20,10 +20,10 @@
     "@ai-sdk/google": "^3.0.53",
     "@ai-sdk/groq": "^3.0.31",
     "@ai-sdk/openai": "^3.0.48",
-    "@assistant-ui/core": "^0.1.15",
-    "@assistant-ui/react": "latest",
+    "@assistant-ui/core": "^0.1.17",
+    "@assistant-ui/react": "^0.12.28",
     "@assistant-ui/react-ai-sdk": "latest",
-    "@assistant-ui/react-markdown": "latest",
+    "@assistant-ui/react-markdown": "^0.12.11",
     "@assistant-ui/react-syntax-highlighter": "^0.12.9",
     "@base-ui/react": "^1.4.0",
     "@hello-pangea/dnd": "^18.0.1",
@@ -58,7 +58,7 @@
     "katex": "^0.16.45",
     "lucide-react": "^1.7.0",
     "mermaid": "^11.13.0",
-    "next": "^16.2.1",
+    "next": "^16.2.3",
     "next-auth": "^4.24.13",
     "next-themes": "^0.4.6",
     "node-cron": "^4.2.1",
@@ -83,6 +83,21 @@
     "uuid": "^14.0.0",
     "vaul": "^1.1.2",
     "zustand": "^5.0.12"
+  },
+  "pnpm": {
+    "overrides": {
+      "dompurify": "^3.4.0",
+      "tar": "^7.5.3",
+      "protobufjs": "^7.5.5",
+      "cross-spawn": "^7.0.6",
+      "braces": "^3.0.3",
+      "ws": "^8.18.0",
+      "micromatch": "^4.0.8",
+      "body-parser": "^1.20.3",
+      "lodash-es": "^4.18.0",
+      "uuid": "^14.0.0",
+      "postcss": "^8.5.10"
+    }
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",

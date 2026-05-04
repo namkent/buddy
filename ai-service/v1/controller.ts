@@ -123,7 +123,7 @@ export const processFile = async (req: Request, res: Response) => {
 
   try {
     console.log(`\x1b[36m[AI-SERVICE]\x1b[0m Processing file: ${req.file.originalname}`);
-    const rawText = await parseFile(req.file.path, req.file.mimetype);
+    const rawText = await parseFile(req.file.path, req.file.mimetype, 0, 0);
     const chunks = await splitText(rawText);
     
     const model = process.env.EMBEDDING_MODEL || "Xenova/paraphrase-multilingual-MiniLM-L12-v2";

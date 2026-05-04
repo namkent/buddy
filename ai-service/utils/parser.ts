@@ -129,8 +129,8 @@ export async function parseFile(filePath: string, mimeType: string, fileId: numb
 
     // 2. Mammoth convert to HTML và trích xuất ảnh phục vụ RAG
     const options = {
-      convertImage: mammoth.images.inline(async (element: any) => {
-        const imageBuffer = await element.read();
+    convertImage: mammoth.images.imgElement(async (element: any) => {
+        const imageBuffer = await element.read("buffer");
         const imageName = `img_${uuidv4()}.jpg`;
         const imagePath = path.join(imagesFolder, imageName);
         

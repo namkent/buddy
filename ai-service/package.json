@@ -31,9 +31,9 @@
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
     "onnxruntime-node": "^1.25.1",
-    "openai": "^6.34.0",
-    "pdf-parse": "^1.1.1",
-    "pdfjs-dist": "^4.4.168",
+    "openai": "^6.35.0",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.7.284",
     "pg": "^8.11.3",
     "sharp": "^0.34.5",
     "swagger-ui-express": "^5.0.1",
@@ -51,6 +51,6 @@
     "nodemon": "^3.1.14",
     "swagger-autogen": "^2.23.7",
     "tsx": "^4.21.0",
-    "typescript": "5.9.3"
+    "typescript": "^6.0.3"
   }
 }

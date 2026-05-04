@@ -20,7 +20,7 @@ export default function AdminLayoutContent({ children }: { children: React.React
           {collapsed ? (
             <div className="w-full flex justify-center text-xl">⚡</div>
           ) : (
-            <div className="flex items-center gap-3 text-violet-600 dark:text-violet-400 font-bold text-lg tracking-tight overflow-hidden whitespace-nowrap">
+            <div className="flex items-center gap-3 text-violet-600 dark:text-violet-400 font-semibold text-xl overflow-hidden whitespace-nowrap">
               <span className="text-2xl">⚡</span> MES Admin
             </div>
           )}
@@ -81,10 +81,10 @@ export default function AdminLayoutContent({ children }: { children: React.React
         <div className="sticky top-0 z-50 h-16 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-white/10 bg-zinc-50/80 dark:bg-[#0a0a0f]/80 backdrop-blur-xl">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-zinc-500 hover:text-zinc-900 dark:hover:text-white p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors focus:outline-none"
-            title={collapsed ? "Mở sidebar" : "Thu gọn sidebar"}
+            className="flex size-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground outline-none focus:outline-none"
+            aria-label="Toggle sidebar"
           >
-            {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+            {collapsed ? <PanelLeftOpen className="size-4" strokeWidth={1.5} /> : <PanelLeftClose className="size-4" strokeWidth={1.5} />}
           </button>
           <div className="flex items-center gap-2">
             <LanguageToggle />

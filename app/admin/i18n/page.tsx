@@ -167,7 +167,7 @@ export default function AdminI18nPage() {
   }
 
   return (
-    <div className="max-w-6xl w-full mx-auto space-y-6">
+    <div className="max-w-6xl w-full mx-auto flex flex-col gap-4 h-[calc(100dvh-6rem)] md:h-[calc(100dvh-8rem)]">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white mb-2">Language Management</h1>
@@ -213,25 +213,25 @@ export default function AdminI18nPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 overflow-hidden shadow-sm flex flex-col min-h-0">
+      <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/5 overflow-hidden shadow-sm flex flex-col flex-1 min-h-0">
         {/* Table Header Container (Fixed) */}
         <div className="bg-zinc-100/50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-white/10 shrink-0">
           <table className="w-full table-fixed text-sm border-separate border-spacing-0">
-            <thead className="text-zinc-500 dark:text-zinc-400 uppercase text-[10px] font-bold tracking-widest">
+            <thead className="text-zinc-500 dark:text-zinc-400 uppercase text-sm tracking-wider">
               <tr className="h-12">
-                <th className="w-[120px] px-6 py-4 text-left">Type</th>
-                <th className="w-[180px] px-6 py-4 text-left">Key</th>
-                <th className="px-6 py-4 text-left">English</th>
-                <th className="px-6 py-4 text-left">Vietnamese</th>
-                <th className="w-[160px] px-6 py-4 text-center">Languages</th>
-                <th className="w-[100px] px-6 py-4 text-right">Actions</th>
+                <th className="w-[120px] px-6 py-4 font-bold text-left">Type</th>
+                <th className="w-[180px] px-6 py-4 font-bold text-left">Key</th>
+                <th className="px-6 py-4 font-bold text-left">English</th>
+                <th className="px-6 py-4 font-bold text-left">Vietnamese</th>
+                <th className="w-[160px] px-6 py-4 font-bold text-center">Languages</th>
+                <th className="w-[120px] px-6 py-4 font-bold text-center">Actions</th>
               </tr>
             </thead>
           </table>
         </div>
 
         {/* Table Body Container (Scrollable) */}
-        <div className="overflow-auto max-h-[70vh] custom-scrollbar">
+        <div className="overflow-auto flex-1 custom-scrollbar">
           <table className="w-full table-fixed text-sm border-separate border-spacing-0">
             <tbody className="divide-y divide-zinc-100 dark:divide-white/5">
               {loading ? (
@@ -270,8 +270,8 @@ export default function AdminI18nPage() {
                         ))}
                       </div>
                     </td>
-                    <td className="w-[100px] px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="w-[120px] px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(item)} className="size-8 text-zinc-500 hover:text-violet-500 hover:bg-violet-500/10" title="Edit Translation">
                           <Pencil className="size-4" />
                         </Button>
