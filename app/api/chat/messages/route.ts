@@ -52,12 +52,16 @@ export async function POST(req: Request) {
     const message = await req.json();
     message.userId = userId;
     
+    const rawThreadId = message.thread_id || message.threadId;
+    const cleanThreadId = rawThreadId?.replace(/^__LOCALID_/, "");
+
     // Đảm bảo tin nhắn được lưu vào hội thoại thuộc về đúng người dùng
-    const thread = await dbConnection.threads.findById(message.thread_id || message.threadId);
+    const thread = await dbConnection.threads.findById(cleanThreadId);
     if (!thread || (thread as any).user_id !== userId) {
       return errorResponse("Bạn không có quyền gửi tin nhắn vào hội thoại này", 403);
     }
 
+    message.threadId = cleanThreadId;
     await dbConnection.messages.create(message);
     return successResponse({ success: true });
   } catch (err) {

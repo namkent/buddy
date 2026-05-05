@@ -9,6 +9,7 @@ import {
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { Sources } from "@/components/assistant-ui/sources";
+import { getChatConfig } from "@/lib/chat-config";
 
 import { MessageTiming } from "@/components/assistant-ui/message-timing";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
@@ -36,6 +37,8 @@ import {
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
   CopyIcon,
   DownloadIcon,
   MoreHorizontalIcon,
@@ -72,7 +75,7 @@ const LANGUAGES = [
 
 const AgentIcon = ({ icon, className }: { icon: string, className?: string }) => {
   if (!icon) return <LucideIcons.Bot className={cn("size-4", className)} />;
-  
+
   // Kiểm tra nếu là Emoji (thường là các ký tự đặc biệt)
   const isEmoji = /\p{Emoji}/u.test(icon) && !/^[a-zA-Z0-9]+$/.test(icon);
   if (isEmoji) return <span className={cn("text-base", className)}>{icon}</span>;
@@ -100,7 +103,6 @@ export const Thread: FC = () => {
 
   return (
     <ThreadPrimitive.Root
-      key={threadId}
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
       style={{
         ["--thread-max-width" as string]: "44rem",
@@ -142,6 +144,31 @@ const ThreadMessage: FC = () => {
   return <AssistantMessage />;
 };
 
+const MessageCreatedAt: FC = () => {
+  const createdAt = useAuiState((s) => s.message.createdAt);
+  if (!createdAt) return null;
+
+  const date = new Date(createdAt);
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  };
+
+  const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(date);
+  const getPart = (type: string) => parts.find(p => p.type === type)?.value;
+
+  const formatted = `${getPart('year')}/${getPart('month')}/${getPart('day')} ${getPart('hour')}:${getPart('minute')}:${getPart('second')}`;
+
+  return (
+    <div className="ml-auto flex items-center px-2 font-medium text-[12px] text-muted-foreground/40 select-none tabular-nums">
+      {formatted}
+    </div>
+  );
+};
+
+
 const ThreadScrollToBottom: FC = () => {
   return (
     <ThreadPrimitive.ScrollToBottom asChild>
@@ -163,8 +190,7 @@ const ThreadWelcome: FC = () => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("/api/chat/config")
-      .then(r => r.json())
+    getChatConfig()
       .then(d => {
         if (d.welcome_title) setTitle(d.welcome_title);
         if (d.welcome_subtitle) setSubtitle(d.welcome_subtitle);
@@ -241,8 +267,7 @@ const Composer: FC = () => {
 
   useEffect(() => {
     // Fetch initial config for features
-    fetch("/api/chat/config")
-      .then(r => r.json())
+    getChatConfig()
       .then(d => {
         if (d.features) setFeatures(d.features);
       })
@@ -533,21 +558,23 @@ const AssistantMessage: FC = () => {
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
-        <MessagePrimitive.Parts>
-          {({ part }) => {
-            if (part.type === "text") return <MarkdownText />;
-            if (part.type === "reasoning") return <Reasoning {...part} />;
-            if (part.type === "source") return (
-              <div className="inline-flex gap-2.5 mr-2.5 mb-2.5 mt-1.5">
-                <Sources {...part} />
-              </div>
-            );
-            if (part.type === "tool-call")
-              return part.toolUI ?? <ToolFallback {...part} />;
+        <AuiIf condition={(s) => s.message.content.length > 0}>
+          <MessagePrimitive.Parts>
+            {({ part }) => {
+              if (part.type === "text") return <MarkdownText />;
+              if (part.type === "reasoning") return <Reasoning {...part} />;
+              if (part.type === "source") return (
+                <div className="inline-flex gap-2.5 mr-2.5 mb-2.5 mt-1.5">
+                  <Sources {...part} />
+                </div>
+              );
+              if (part.type === "tool-call")
+                return part.toolUI ?? <ToolFallback {...part} />;
 
-            return null;
-          }}
-        </MessagePrimitive.Parts>
+              return null;
+            }}
+          </MessagePrimitive.Parts>
+        </AuiIf>
 
         <AuiIf condition={(s) => s.message?.status?.type === "running" && !s.message.content.length}>
           <div className="flex gap-1 py-4">
@@ -571,11 +598,10 @@ const AssistantMessage: FC = () => {
 const AssistantActionBar: FC = () => {
   return (
     <ActionBarPrimitive.Root
-      hideWhenRunning
       // autohide="not-last"
       autohideFloat="single-branch"
       // className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:rounded-md data-floating:border data-floating:bg-background data-floating:p-1 data-floating:shadow-sm"
-      className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:bg-background data-floating:p-1"
+      className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex flex-1 items-center gap-1 text-muted-foreground data-floating:absolute data-floating:bg-background data-floating:p-1"
     >
       <ActionBarPrimitive.Copy asChild>
         <TooltipIconButton tooltip="Copy">
@@ -627,7 +653,37 @@ const AssistantActionBar: FC = () => {
           </ActionBarPrimitive.ExportMarkdown>
         </ActionBarMorePrimitive.Content>
       </ActionBarMorePrimitive.Root>
+      <MessageCreatedAt />
     </ActionBarPrimitive.Root>
+  );
+};
+
+const CollapsibleUserMessageText: FC<{ text: string }> = ({ text }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const shouldCollapse = text.length > 200 || text.split("\n").length > 5;
+
+  return (
+    <div className="flex flex-col">
+      <div
+        className={cn(
+          "whitespace-pre-wrap transition-[max-height] duration-500 ease-in-out overflow-hidden",
+          shouldCollapse && !isExpanded ? "max-h-[120px] relative" : "max-h-[5000px]"
+        )}
+      >
+        {text}
+        {shouldCollapse && !isExpanded && (
+          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-muted via-muted/80 to-transparent pointer-events-none" />
+        )}
+      </div>
+      {shouldCollapse && (
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="mt-1 self-center text-muted-foreground/60 hover:text-indigo-500 transition-colors cursor-pointer p-1"
+        >
+          {isExpanded ? <ChevronUpIcon className="size-5" /> : <ChevronDownIcon className="size-5" />}
+        </button>
+      )}
+    </div>
   );
 };
 
@@ -644,9 +700,7 @@ const UserMessage: FC = () => {
           <MessagePrimitive.Parts>
             {({ part }) => {
               if (part.type === "text") {
-                // Lọc bỏ các thẻ kỹ thuật như [Search], [Translate...], [Summarize] khỏi giao diện người dùng
-                const cleanText = part.text.replace(/^\[(Search|Summarize|Translate .*?)\][:\s]*/i, "");
-                return <span className="whitespace-pre-wrap">{cleanText}</span>;
+                return <CollapsibleUserMessageText text={part.text} />;
               }
               return null;
             }}
@@ -665,7 +719,6 @@ const UserMessage: FC = () => {
 const UserActionBar: FC = () => {
   return (
     <ActionBarPrimitive.Root
-      hideWhenRunning
       autohide="not-last"
       className="aui-user-action-bar-root flex flex-row items-end gap-1"
     >
@@ -679,11 +732,13 @@ const UserActionBar: FC = () => {
           </AuiIf>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit">
-          <PencilIcon />
-        </TooltipIconButton>
-      </ActionBarPrimitive.Edit>
+      <AuiIf condition={(s) => !s.thread.isRunning}>
+        <ActionBarPrimitive.Edit asChild>
+          <TooltipIconButton tooltip="Edit">
+            <PencilIcon />
+          </TooltipIconButton>
+        </ActionBarPrimitive.Edit>
+      </AuiIf>
     </ActionBarPrimitive.Root>
   );
 };

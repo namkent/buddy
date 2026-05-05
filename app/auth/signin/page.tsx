@@ -41,7 +41,7 @@ function SignInContent() {
     setMsg({ type: "", text: "" });
     const res = await signIn("credentials", { username: email, password, redirect: false });
     if (res?.error) {
-      setMsg({ type: "error", text: "Email hoặc mật khẩu không chính xác." });
+      setMsg({ type: "error", text: "Tài khoản hoặc mật khẩu không chính xác." });
       setLoading(false);
     } else {
       window.location.href = "/";
@@ -174,7 +174,7 @@ function SignInContent() {
 
                   <div className="my-6 flex items-center gap-3">
                     <div className="flex-1 h-px bg-zinc-300 dark:bg-white/10" />
-                    <span className="text-xs text-zinc-400 uppercase tracking-wider">hoặc email</span>
+                    <span className="text-xs text-zinc-400 uppercase tracking-wider">Tài khoản</span>
                     <div className="flex-1 h-px bg-zinc-300 dark:bg-white/10" />
                   </div>
                 </>
@@ -182,7 +182,7 @@ function SignInContent() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required
+                  <input type="text" placeholder="Email hoặc Username" value={email} onChange={(e) => setEmail(e.target.value)} required
                     className="w-full rounded-xl border border-zinc-300 dark:border-white/10 bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                   />
                 </div>

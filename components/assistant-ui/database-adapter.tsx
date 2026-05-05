@@ -93,52 +93,12 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
     const threadId = getThreadId();
     const lastMessage = messages[messages.length - 1];
 
-    const userMessages = messages.filter(m => m.role === "user");
-    if (userMessages.length > 1 && userMessages.length % 5 === 0 && threadId && !threadId.startsWith("__LOCALID_")) {
-      // Delay it by 500ms to ensure the main chat fetch starts first without NextJS queuing blocks
-      setTimeout(() => {
-        (async () => {
-          try {
-            const recentMessages = messages
-              .slice(-20)
-              .map(m => {
-                const content = Array.isArray(m.content) 
-                  ? m.content.map((c: any) => c.text || "").join("") 
-                  : typeof m.content === 'string' ? m.content : "";
-                return `${m.role}: ${content}`;
-              })
-              .join("\n");
-              
-            const titleRes = await fetch("/api/chat/title", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message: recentMessages, isPeriodic: true })
-            });
-            
-            if (!titleRes.ok) return;
-            const titleData = await titleRes.json();
-            
-            if (titleData.title) {
-              const cleanTitle = titleData.title.trim().replace(/^["']|["']$/g, '');
-              await fetch("/api/chat/threads", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: threadId, data: { title: cleanTitle } }),
-              });
-              // Dispatch event to refresh thread list
-              window.dispatchEvent(new CustomEvent('assistant:thread-updated', {
-                detail: { threadId, title: cleanTitle }
-              }));
-            }
-          } catch (e) {
-            console.error("Auto rename failed", e);
-          }
-        })();
-      }, 500);
-    }
-
     // Get current message with attachments
     const processedContent = await processMessageAttachments(lastMessage);
+
+    const startTime = Date.now();
+    let firstTokenTime = 0;
+    let chunkCount = 0;
 
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -184,15 +144,13 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
       }
     }
 
-    const startTime = Date.now();
-    let firstTokenTime = 0;
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
       fullText += chunk;
+      chunkCount++;
 
       if (!firstTokenTime && fullText.length > 0) {
         firstTokenTime = Date.now();
@@ -223,6 +181,7 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
         contentParts.push(...sourceParts);
       }
 
+      const currentDuration = (Date.now() - startTime) / 1000;
       yield { 
         content: contentParts,
         metadata: { 
@@ -230,8 +189,8 @@ export const createChatModelAdapter = (getThreadId: () => string | undefined): C
             streamStartTime: startTime, 
             firstTokenTime: firstTokenTime || Date.now(), 
             totalStreamTime: Date.now() - startTime,
-            tokensPerSecond: 0,
-            totalChunks: 0,
+            tokensPerSecond: currentDuration > 0 ? (fullText.length / currentDuration) : 0,
+            totalChunks: chunkCount,
             toolCallCount: 0 
           } 
         }
@@ -361,33 +320,132 @@ export const myThreadListAdapter: RemoteThreadListAdapter = {
   },
 };
 
-export const createHistoryAdapter = (remoteId?: string): ThreadHistoryAdapter => ({
-  async load() {
-    if (!remoteId) return { messages: [] };
-    const res = await fetch(`/api/chat/messages?threadId=${remoteId}`);
-    const messages = await res.json();
-    return {
-      messages: messages.map((m: any) => ({
+const formatMessages = (messages: any[]) => {
+  let lastId: string | null = null;
+  return messages.map((m: any) => {
+    const isAssistant = m.role === "assistant";
+    let contentParts: any[] = [];
+    let fullText = String(m.content || "");
+
+    // Tiền xử lý nội dung
+
+    let isJsonArray = false;
+    const attachments: any[] = [];
+    try {
+      const parsed = JSON.parse(fullText);
+      if (Array.isArray(parsed)) {
+        contentParts = parsed.filter((c: any) => {
+          if (c.type === "image") {
+            attachments.push({
+              id: Math.random().toString(36).substring(7),
+              type: "image",
+              name: "",
+              content: [{ type: "image", image: c.image }],
+              status: { type: "complete" }
+            });
+            return false;
+          }
+          return true;
+        });
+        isJsonArray = true;
+      }
+    } catch {}
+
+    if (!isJsonArray) {
+      const thinkStart = fullText.indexOf("<think>");
+      const thinkEnd = fullText.indexOf("</think>");
+
+      if (thinkStart !== -1) {
+        if (thinkStart > 0) contentParts.push({ type: "text", text: fullText.substring(0, thinkStart) });
+        if (thinkEnd !== -1) {
+          contentParts.push({
+            type: "reasoning",
+            text: fullText.substring(thinkStart + 7, thinkEnd).trim()
+          });
+          const mainText = fullText.substring(thinkEnd + 8).trim();
+          if (mainText.length > 0) contentParts.push({ type: "text", text: mainText });
+        } else {
+          contentParts.push({ type: "reasoning", text: fullText.substring(thinkStart + 7).trim() });
+        }
+      } else {
+        contentParts.push({ type: "text", text: fullText });
+      }
+    }
+
+    const item = {
+      parentId: m.parentId || lastId,
+      message: {
         id: m.id,
         role: m.role,
-        content: [{ type: "text", text: m.content }],
+        content: contentParts,
         createdAt: new Date(m.createdAt),
-      })),
+        ...(isAssistant ? {
+          status: "complete",
+          metadata: {
+            steps: m.steps || [],
+            unstable_annotations: m.annotations || [],
+          }
+        } : {
+          attachments: attachments,
+          metadata: {}
+        })
+      }
     };
+    lastId = m.id;
+    return item;
+  });
+};
+
+const historyCache = new Map<string, any[]>();
+
+export const createHistoryAdapter = (getId: () => string | undefined): ThreadHistoryAdapter => ({
+  async load() {
+    const remoteId = getId();
+    if (!remoteId || remoteId.startsWith("__LOCALID_")) return { messages: [] };
+    
+    // Check cache to make thread switching instant
+    if (historyCache.has(remoteId)) {
+      return { messages: historyCache.get(remoteId)! };
+    }
+
+    try {
+      const res = await fetch(`/api/chat/messages?threadId=${remoteId}`);
+      if (!res.ok) return { messages: [] };
+      const messages = await res.json();
+      const formatted = formatMessages(messages);
+      
+      // Update cache
+      historyCache.set(remoteId, formatted);
+      
+      return { messages: formatted };
+    } catch (e) {
+      console.error("Failed to load history:", e);
+      return { messages: [] };
+    }
   },
 
   async append(rawMessage: any) {
+    const remoteId = getId();
     if (!remoteId) return;
-    const message = 'message' in rawMessage ? rawMessage.message : rawMessage;
+    const message = "message" in rawMessage ? rawMessage.message : rawMessage;
+    
+    // Only persist user messages from the frontend. 
+    // Assistant messages are persisted by the backend onFinish to ensure reliability.
+    if (message.role !== "user") return;
+
+    // Clear cache for this thread so it reloads fresh next time if needed
+    historyCache.delete(remoteId);
+
     const processedContent = await processMessageAttachments(message);
 
     await fetch("/api/chat/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        ...message, 
+      body: JSON.stringify({
+        ...message,
+        parentId: message.parentId || null,
         content: processedContent,
-        thread_id: remoteId 
+        thread_id: remoteId,
       }),
     });
   },

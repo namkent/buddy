@@ -58,7 +58,14 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
         
-        const dbUser = await dbConnection.users.findByEmail(credentials.username);
+        // Try to find by email first
+        let dbUser = await dbConnection.users.findByEmail(credentials.username);
+        
+        // If not found, try to find by ID (Username)
+        if (!dbUser) {
+          dbUser = await dbConnection.users.findById(credentials.username);
+        }
+
         if (dbUser && dbUser.password_hash) {
           const isMatch = await bcrypt.compare(credentials.password, dbUser.password_hash);
           if (isMatch) {

@@ -222,12 +222,42 @@ Instruction: Translate the "Source Text" above into ${targetLanguage}. Output ON
 
     pruneImages(apiMessages);
 
+    const cleanThreadId = threadId?.replace(/^__LOCALID_/, "");
+
     const result = streamText({
       model: openai.chat(selectedModel),
       messages: apiMessages,
       system: finalSystemPrompt,
       // Disable tools for both Translate and manual RAG modes to avoid language/instruction conflicts
       tools: (isTranslate || (isRagSearch && ragSourcesForHeader.length > 0)) ? {} : (activeTools as any),
+      onFinish: async ({ text }) => {
+        if (cleanThreadId) {
+          // 1. Đảm bảo thread tồn tại (đề phòng race condition từ client)
+          await dbConnection.threads.create({ id: cleanThreadId, userId }).catch(() => {});
+          
+          // 2. Lưu tin nhắn của Người dùng (nếu chưa được lưu từ client)
+          await dbConnection.messages.create({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            parentId: message.parentId || null,
+            threadId: cleanThreadId,
+            userId: userId,
+            createdAt: new Date()
+          }).catch(() => {});
+
+          // 3. Lưu tin nhắn của Assistant
+          await dbConnection.messages.create({
+            id: `asst_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            role: "assistant",
+            content: text,
+            parentId: message.id, // Tin nhắn user hiện tại là cha của tin nhắn assistant mới
+            threadId: cleanThreadId,
+            userId: userId,
+            createdAt: new Date()
+          }).catch(() => {});
+        }
+      }
     });
 
     const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };

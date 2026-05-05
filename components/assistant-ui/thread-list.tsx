@@ -15,46 +15,11 @@ import { type FC, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/components/i18n/i18n-context";
 
-// ─── ThreadInitializer ────────────────────────────────────────────────────────
-// Tự động switch sang thread khi mở URL /app/{threadId} trực tiếp.
-// Phải nằm bên trong ThreadListPrimitive.Root để có context threads.isLoading
-const ThreadInitializer: FC = () => {
-  const aui = useAui();
-  const isLoading = useAuiState((s) => s.threads.isLoading);
-  const doneRef = useRef(false);
-
-  useEffect(() => {
-    if (doneRef.current || isLoading) return;
-
-    const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-    const match = pathname.match(/^\/app\/([^/]+)$/);
-    if (!match) return;
-
-    const threadId = match[1];
-    doneRef.current = true;
-
-    try {
-      aui.threads().switchToThread(threadId);
-    } catch (e: unknown) {
-      console.error("[MES Assistant] Could not restore thread from URL:", e);
-      // Ngăn crash và chuyển hướng về trang chủ
-      window.history.pushState({}, "", "/");
-      try {
-        aui.threads().switchToNewThread();
-      } catch {}
-    }
-  }, [isLoading, aui]);
-
-  return null;
-};
-
-// ─── ThreadList (exported) ────────────────────────────────────────────────────
 export const ThreadList: FC = () => {
   const [isArchivedOpen, setIsArchivedOpen] = useState(false);
 
   return (
     <ThreadListPrimitive.Root className="aui-root aui-thread-list-root flex flex-col gap-1 flex-1 overflow-hidden">
-      <ThreadInitializer />
       <ThreadListNew />
       <div className="flex-1 flex flex-col overflow-hidden min-h-0 pl-1 pr-0">
         <AuiIf condition={({ threads }) => threads.isLoading}>

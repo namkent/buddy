@@ -1,6 +1,6 @@
 "use client";
 
-import { useMessageTiming } from "@assistant-ui/react";
+import { useMessageTiming, useAuiState } from "@assistant-ui/react";
 import {
   Tooltip,
   TooltipContent,
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { FC } from "react";
 
 const formatTimingMs = (ms: number | undefined): string => {
-  if (ms === undefined) return "—";
+  if (ms === undefined || isNaN(ms)) return "—";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 };
@@ -39,7 +39,22 @@ export const MessageTiming: FC<{
   side?: "top" | "right" | "bottom" | "left";
 }> = ({ className, side = "right" }) => {
   const timing = useMessageTiming();
+  const createdAt = useAuiState((s) => s.message.createdAt);
+
   if (timing?.totalStreamTime === undefined) return null;
+
+  const normalizeDuration = (value: number | undefined) => {
+    if (value === undefined) return undefined;
+    // Nếu giá trị lớn hơn 1 tỷ ms (khoảng 11 ngày), chắc chắn là timestamp tuyệt đối
+    if (value > 1000000000) {
+      if (!createdAt) return undefined;
+      const start = new Date(createdAt).getTime();
+      return Math.max(0, value - start);
+    }
+    return value;
+  };
+
+  const ttft = normalizeDuration(timing.firstTokenTime);
 
   return (
     <Tooltip>
@@ -63,11 +78,11 @@ export const MessageTiming: FC<{
         className="[&_span>svg]:hidden! rounded-lg border bg-popover px-3 py-2 text-popover-foreground shadow-md"
       >
         <div className="grid min-w-35 gap-1.5 text-xs">
-          {timing.firstTokenTime !== undefined && (
+          {ttft !== undefined && (
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">First token</span>
               <span className="font-mono tabular-nums">
-                {formatTimingMs(timing.firstTokenTime)}
+                {formatTimingMs(ttft)}
               </span>
             </div>
           )}

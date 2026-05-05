@@ -32,10 +32,19 @@ interface AssistantProps {
 
 export const Assistant = ({ initialThreadId }: AssistantProps) => {
   const runtime = useRemoteThreadListRuntime({
+    threadId: initialThreadId,
     runtimeHook: () => {
       const threadListItem = useAui().threadListItem();
+      
       const modelAdapter = useMemo(() => {
         return createChatModelAdapter(() => {
+          const state = threadListItem.getState();
+          return state.remoteId || state.externalId;
+        });
+      }, [threadListItem]);
+
+      const historyAdapter = useMemo(() => {
+        return createHistoryAdapter(() => {
           const state = threadListItem.getState();
           return state.remoteId || state.externalId;
         });
@@ -65,136 +74,12 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
       return useLocalRuntime(modelAdapter, { 
         adapters: { 
           attachments: attachmentAdapter,
-          feedback: feedbackAdapter
+          feedback: feedbackAdapter,
+          history: historyAdapter,
         } 
       });
     },
-    adapter: {
-      ...myThreadListAdapter,
-      unstable_Provider: ({children}) => {
-        const threadListItem = useAui().threadListItem();
-
-        const history = useMemo<ThreadHistoryAdapter>(
-          () => ({
-            async load() {
-              const state = threadListItem.getState();
-              const remoteId = state.remoteId || state.externalId;
-              if (!remoteId) return {messages: []};
-
-              const res = await fetch(`/api/chat/messages?threadId=${remoteId}`);
-              const messages = await res.json();
-
-              let lastId: string | null = null;
-              const formattedMessages = messages.map((m: any) => {
-                const isAssistant = m.role === "assistant";
-
-                let contentParts: any[] = [];
-                let fullText = String(m.content || "");
-                
-                // Tiền xử lý nội dung
-                fullText = fullText.replace(/^\[(Search|Summarize|Translate .*?)\][:\s]*/i, "");
-                
-                let isJsonArray = false;
-                const attachments: any[] = [];
-                try {
-                  const parsed = JSON.parse(fullText);
-                  if (Array.isArray(parsed)) {
-                    contentParts = parsed.filter(c => {
-                      if (c.type === "image") {
-                        attachments.push({
-                          id: Math.random().toString(36).substring(7),
-                          type: "image",
-                          name: "", 
-                          content: [{ type: "image", image: c.image }],
-                          status: { type: "complete" }
-                        });
-                        return false;
-                      }
-                      return true;
-                    });
-                    isJsonArray = true;
-                  }
-                } catch {}
-
-                if (!isJsonArray) {
-                  // Phân tách logic suy nghĩ (Reasoning)
-                  const thinkStart = fullText.indexOf("<think>");
-                  const thinkEnd = fullText.indexOf("</think>");
-
-                  if (thinkStart !== -1) {
-                    if (thinkStart > 0) {
-                      contentParts.push({ type: "text", text: fullText.substring(0, thinkStart) });
-                    }
-                    
-                    if (thinkEnd !== -1) {
-                      contentParts.push({
-                        type: "reasoning",
-                        text: fullText.substring(thinkStart + 7, thinkEnd).trim()
-                      });
-                      const mainText = fullText.substring(thinkEnd + 8).trim();
-                      if (mainText.length > 0) {
-                        contentParts.push({ type: "text", text: mainText });
-                      }
-                    } else {
-                      contentParts.push({ 
-                        type: "reasoning", 
-                        text: fullText.substring(thinkStart + 7).trim() 
-                      });
-                    }
-                  } else {
-                    contentParts.push({ type: "text", text: fullText });
-                  }
-                }
-
-                const item = {
-                  parentId: lastId,
-                  message: {
-                    id: m.id,
-                    role: m.role,
-                    content: contentParts,
-                    createdAt: new Date(m.createdAt),
-                    ...(isAssistant ? {
-                      status: { type: "complete" },
-                      metadata: {
-                        steps: m.steps || [],
-                        unstable_annotations: m.annotations || [],
-                      }
-                    } : {
-                      attachments: attachments,
-                      metadata: {}
-                    })
-                  }
-                };
-                lastId = m.id;
-                return item;
-              });
-
-              return { messages: formattedMessages };
-            },
-
-            async append(message) {
-              const state = threadListItem.getState();
-              let remoteId = state.remoteId;
-              if (!remoteId) {
-                const initRes = await threadListItem.initialize();
-                remoteId = initRes.remoteId;
-              }
-              const adapter = createHistoryAdapter(remoteId);
-              return adapter.append(message);
-            },
-          }),
-          [threadListItem],
-        );
-
-        const adapters = useMemo(() => ({history}), [history]);
-
-        return (
-          <RuntimeAdapterProvider adapters={adapters}>
-            {children}
-          </RuntimeAdapterProvider>
-        );
-      },
-    },
+    adapter: myThreadListAdapter,
   });
 
   // Lắng nghe event khi thread mới được tạo (tin nhắn đầu tiên) → cập nhật URL
@@ -234,11 +119,24 @@ export const Assistant = ({ initialThreadId }: AssistantProps) => {
 
 const ThreadSync = () => {
   const aui = useAui();
+  const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
+
+  // 1. Cập nhật URL khi mainThreadId thay đổi (chọn thread trong sidebar)
+  useEffect(() => {
+    if (mainThreadId && !mainThreadId.startsWith("__LOCALID_")) {
+      const currentPath = window.location.pathname;
+      const targetPath = `/app/${mainThreadId}`;
+      if (currentPath !== targetPath && currentPath.startsWith("/app/")) {
+        window.history.pushState({}, "", targetPath);
+      }
+    }
+  }, [mainThreadId]);
+
+  // 2. Đồng bộ tên thread từ event (rename)
   useEffect(() => {
     const handleThreadUpdated = (e: Event) => {
       const { threadId, title } = (e as CustomEvent<{ threadId: string, title: string }>).detail;
       try {
-        // useAui().threads() là cách chính thống để tương tác với thread list
         const item = aui.threads().item({ id: threadId });
         if (item) {
           item.rename(title);

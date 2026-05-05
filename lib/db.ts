@@ -87,6 +87,7 @@ export const dbConnection = {
         title TEXT DEFAULT 'New Chat',
         archived BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         user_id TEXT REFERENCES users(id) ON DELETE CASCADE
       );
       
@@ -95,6 +96,7 @@ export const dbConnection = {
         thread_id TEXT REFERENCES chat_threads(id) ON DELETE CASCADE,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        parent_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         user_id TEXT REFERENCES users(id) ON DELETE CASCADE
       );
@@ -179,6 +181,7 @@ export const dbConnection = {
     try {
       await pool.query('ALTER TABLE chat_threads ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE');
       await pool.query('ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE');
+      await pool.query('ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS parent_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false');
       // Track last activity for "online" detection (5-min window)
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMP WITH TIME ZONE');
@@ -311,7 +314,7 @@ export const dbConnection = {
 
   threads: {
     async findAll(userId: string): Promise<ChatThread[]> {
-      const res: QueryResult<ChatThread> = await pool.query('SELECT * FROM chat_threads WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const res: QueryResult<ChatThread> = await pool.query('SELECT * FROM chat_threads WHERE user_id = $1 ORDER BY updated_at DESC, created_at DESC', [userId]);
       return res.rows;
     },
     async findById(id: string): Promise<ChatThread | null> {
@@ -340,7 +343,7 @@ export const dbConnection = {
   messages: {
     async findByThreadId(threadId: string) {
       const res = await pool.query(
-        'SELECT id, role, content, created_at as "createdAt" FROM chat_messages WHERE thread_id = $1 ORDER BY created_at ASC',
+        'SELECT id, role, content, parent_id as "parentId", created_at as "createdAt" FROM chat_messages WHERE thread_id = $1 ORDER BY created_at ASC',
         [threadId]
       );
       return res.rows;
@@ -359,9 +362,12 @@ export const dbConnection = {
         }
 
         await pool.query(
-          'INSERT INTO chat_messages (id, thread_id, role, content, created_at, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
-          [message.id, thread_id, message.role, textContent, message.createdAt || new Date(), message.userId || null]
+          'INSERT INTO chat_messages (id, thread_id, role, content, parent_id, created_at, user_id) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING',
+          [message.id, thread_id, message.role, textContent, message.parentId || null, message.createdAt || new Date(), message.userId || null]
         );
+
+        // Cập nhật updated_at cho thread để đẩy lên đầu danh sách
+        await pool.query('UPDATE chat_threads SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [thread_id]);
       } catch (error) {
         console.error("DB Message Error:", error);
       }

@@ -4,7 +4,13 @@ ai-service/node_modules/
 ai-service/dist/
 dist/
 build/
-
+.pnpm-store/
+.pnpm-cache/
+bundled-models/
+install/
+*.zip
+*.7z
+*.tar
 
 # Next.js
 .next/

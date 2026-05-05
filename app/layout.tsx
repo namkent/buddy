@@ -59,7 +59,7 @@ export default async function RootLayout({
           <AuthProvider>
             <I18nProvider lang={lang} initialTranslations={translations}>
               <AutoLoginRedirect />
-              <HeartbeatProvider />
+              {/* <HeartbeatProvider /> */}
               <TooltipProvider>{children}</TooltipProvider>
             </I18nProvider>
           </AuthProvider>
